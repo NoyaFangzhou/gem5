@@ -51,7 +51,8 @@
 SimpleMemory::SimpleMemory(const SimpleMemoryParams* p) :
     AbstractMemory(p),
     port(name() + ".port", *this), latency(p->latency),
-    latency_var(p->latency_var), bandwidth(p->bandwidth), isBusy(false),
+    latency_wrt(p->latency), latency_var(p->latency_var),
+    bandwidth(p->bandwidth), isBusy(false),
     retryReq(false), retryResp(false),
     releaseEvent([this]{ release(); }, name()),
     dequeueEvent([this]{ dequeue(); }, name())
@@ -77,7 +78,7 @@ SimpleMemory::recvAtomic(PacketPtr pkt)
              "is responding");
 
     access(pkt);
-    return getLatency();
+    return getLatency(pkt);
 }
 
 Tick
@@ -164,7 +165,7 @@ SimpleMemory::recvTimingReq(PacketPtr pkt)
         // atomic response
         assert(pkt->isResponse());
 
-        Tick when_to_send = curTick() + receive_delay + getLatency();
+        Tick when_to_send = curTick() + receive_delay + getLatency(pkt);
 
         // typically this should be added at the end, so start the
         // insertion sort with the last element, also make sure not to
@@ -227,10 +228,16 @@ SimpleMemory::dequeue()
 }
 
 Tick
-SimpleMemory::getLatency() const
+SimpleMemory::getLatency(PacketPtr pkt) const
 {
-    return latency +
-        (latency_var ? random_mt.random<Tick>(0, latency_var) : 0);
+       // if (pkt->isRead()) {
+        return latency +
+                (latency_var ? random_mt.random<Tick>(0, latency_var) : 0);
+       // }
+        //else {
+        // return latency_wrt +
+        // (latency_var ? random_mt.random<Tick>(0, latency_var) : 0);
+       // }
 }
 
 void

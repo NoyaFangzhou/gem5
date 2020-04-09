@@ -107,11 +107,13 @@ class SimpleMemory : public AbstractMemory
      * ready to be sent.
      */
     const Tick latency;
+    const Tick latency_wrt;
 
     /**
      * Fudge factor added to the latency.
      */
     const Tick latency_var;
+
 
     /**
      * Internal (unbounded) storage to mimic the delay caused by the
@@ -166,7 +168,7 @@ class SimpleMemory : public AbstractMemory
      *
      * @return the latency seen by the current packet
      */
-    Tick getLatency() const;
+    Tick getLatency(PacketPtr) const;
 
     /**
      * Upstream caches need this packet until true is returned, so

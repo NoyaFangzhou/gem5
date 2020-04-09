@@ -90,11 +90,15 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     tRRD_L(p->tRRD_L), tXAW(p->tXAW), tXP(p->tXP), tXS(p->tXS),
     activationLimit(p->activation_limit), rankToRankDly(tCS + tBURST),
     wrToRdDly(tCL + tBURST + p->tWTR), rdToWrDly(tRTW + tBURST),
+    tCL_nvm(p->tCL_nvm), tRP_nvm(p->tRP_nvm), tWR_nvm(p->tWR_nvm),
+    tRCD_nvm(p->tRCD_nvm), tRAS_nvm(p->tRAS_nvm),
     memSchedPolicy(p->mem_sched_policy), addrMapping(p->addr_mapping),
     pageMgmt(p->page_policy),
     maxAccessesPerRow(p->max_accesses_per_row),
     frontendLatency(p->static_frontend_latency),
     backendLatency(p->static_backend_latency),
+    writeLatency(p->static_write_latency), //newly added
+    readLatency(p->static_read_latency),  //newly added
     nextBurstAt(0), prevArrival(0),
     nextReqTime(0),
     stats(*this),
@@ -274,7 +278,14 @@ DRAMCtrl::recvAtomic(PacketPtr pkt)
     if (pkt->hasData()) {
         // this value is not supposed to be accurate, just enough to
         // keep things going, mimic a closed page
+#ifdef DRAM_NVM
+        if (pkt->getAddr() <  0x40000000) //1 GB
         latency = tRP + tRCD + tCL;
+        else
+         latency = tRP_nvm + tRCD_nvm + tCL_nvm;
+#else
+     latency = tRP + tRCD + tCL;
+#endif
     }
     return latency;
 }
@@ -901,8 +912,15 @@ DRAMCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency)
         // with headerDelay that takes into account the delay provided by
         // the xbar and also the payloadDelay that takes into account the
         // number of data beats.
+
         Tick response_time = curTick() + static_latency + pkt->headerDelay +
                              pkt->payloadDelay;
+
+      //Added by Sayak
+        //if (!(pkt->isRead())) {
+        //    response_time = response_time + 500;
+       // }
+
         // Here we reset the timing of the packet before sending it out.
         pkt->headerDelay = pkt->payloadDelay = 0;
 
@@ -922,7 +940,7 @@ DRAMCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency)
 
 void
 DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
-                       Tick act_tick, uint32_t row)
+                       Tick act_tick, uint32_t row, bool in_dram)
 {
     assert(rank_ref.actTicks.size() == activationLimit);
 
@@ -952,12 +970,20 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
             timeStampOffset, bank_ref.bank, rank_ref.rank);
 
     // The next access has to respect tRAS for this bank
+   if (in_dram)
     bank_ref.preAllowedAt = act_tick + tRAS;
+   else
+        bank_ref.preAllowedAt = act_tick + tRAS_nvm;
 
+   if (in_dram) {
     // Respect the row-to-column command delay for both read and write cmds
     bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
     bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
-
+   }
+   else {
+    bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
+    bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
+   }
     // start by enforcing tRRD
     for (int i = 0; i < banksPerRank; i++) {
         // next activate to any bank in this rank must not happen
@@ -1109,7 +1135,20 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
 
         // Record the activation and deal with all the global timing
         // constraints caused be a new activation (tRRD and tXAW)
-        activateBank(rank, bank, act_tick, dram_pkt->row);
+
+
+
+#ifdef DRAM_NVM
+        if (dram_pkt->addr < 0x40000000) //1 GB
+        {
+         activateBank(rank, bank, act_tick, dram_pkt->row, true);
+        }
+        else
+        activateBank(rank, bank, act_tick, dram_pkt->row, false);
+#else
+        activateBank(rank, bank, act_tick, dram_pkt->row, true);
+#endif
+
     }
 
     // respect any constraints on the command (e.g. tRCD or tCCD)
@@ -1120,9 +1159,15 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // the command; need minimum of tBURST between commands
     Tick cmd_at = std::max({col_allowed_at, nextBurstAt, curTick()});
 
+#ifdef DRAM_NVM
     // update the packet ready time
+     if (dram_pkt->addr < 0x40000000) //1 GB
     dram_pkt->readyTime = cmd_at + tCL + tBURST;
-
+     else
+        dram_pkt->readyTime = cmd_at + tCL_nvm + tBURST;
+#else
+     dram_pkt->readyTime = cmd_at + tCL + tBURST;
+#endif
     // update the time for the next read/write burst for each
     // bank (add a max with tCCD/tCCD_L/tCCD_L_WR here)
     Tick dly_to_rd_cmd;
@@ -1170,9 +1215,24 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // If this is a write, we also need to respect the write recovery
     // time before a precharge, in the case of a read, respect the
     // read to precharge constraint
-    bank.preAllowedAt = std::max(bank.preAllowedAt,
+    #ifdef DRAM_NVM
+        if (dram_pkt->addr < 0x40000000) //1 GB
+        {
+                bank.preAllowedAt = std::max(bank.preAllowedAt,
                                  dram_pkt->isRead() ? cmd_at + tRTP :
                                  dram_pkt->readyTime + tWR);
+        }
+        else {
+               bank.preAllowedAt = std::max(bank.preAllowedAt,
+                                 dram_pkt->isRead() ? cmd_at + tRTP :
+                                 dram_pkt->readyTime + tWR_nvm);
+
+        }
+    #else
+         bank.preAllowedAt = std::max(bank.preAllowedAt,
+                                 dram_pkt->isRead() ? cmd_at + tRTP :
+                                 dram_pkt->readyTime + tWR);
+   #endif
 
     // increment the bytes accessed and the accesses per row
     bank.bytesAccessed += burstSize;
@@ -1268,7 +1328,15 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // conservative estimate of when we have to schedule the next
     // request to not introduce any unecessary bubbles. In most cases
     // we will wake up sooner than we have to.
-    nextReqTime = nextBurstAt - (tRP + tRCD);
+    //
+  #ifdef DRAM_NVM
+             if (dram_pkt->addr < 0x40000000) //1 GB
+             nextReqTime = nextBurstAt - (tRP + tRCD);
+             else
+             nextReqTime = nextBurstAt - (tRP_nvm + tRCD_nvm);
+ #else
+           nextReqTime = nextBurstAt - (tRP + tRCD);
+#endif
 
     // Update the stats and schedule the next request
     if (dram_pkt->isRead()) {

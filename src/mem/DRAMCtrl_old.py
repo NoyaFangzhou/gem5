@@ -113,12 +113,8 @@ class DRAMCtrl(QoSMemCtrl):
     # frontend part and a backend part, with reads and writes serviced
     # by the queues only seeing the frontend contribution, and reads
     # serviced by the memory seeing the sum of the two
-    static_frontend_latency = Param.Latency("10ns", "Static frontend latency")
-    static_backend_latency = Param.Latency("10ns", "Static backend latency")
-
-    static_read_latency = Param.Latency("10ns", "Static read latency")
-    static_write_latency = Param.Latency("50ns", "Static write latency")
-
+    static_frontend_latency = Param.Latency("100ns", "Static frontend latency")
+    static_backend_latency = Param.Latency("100ns", "Static backend latency")
     # the physical organisation of the DRAM
     device_bus_width = Param.Unsigned("data bus width in bits for each DRAM "\
                                       "device/chip")
@@ -155,20 +151,19 @@ class DRAMCtrl(QoSMemCtrl):
     # the amount of time in nanoseconds from issuing an activate command
     # to the data being available in the row buffer for a read/write
     tRCD = Param.Latency("RAS to CAS delay")
-    tRCD_nvm = Param.Latency("RAS to CAS delay")
 
     # the time from issuing a read/write command to seeing the actual data
     tCL = Param.Latency("CAS latency")
-    tCL_nvm = Param.Latency("CAS latency")
+
     # minimum time between a precharge and subsequent activate
     tRP = Param.Latency("Row precharge time")
-    tRP_nvm = Param.Latency("Row precharge time")
+
     # minimum time between an activate and a precharge to the same row
     tRAS = Param.Latency("ACT to PRE delay")
-    tRAS_nvm = Param.Latency("ACT to PRE delay")
+
     # minimum time between a write data transfer and a precharge
     tWR = Param.Latency("Write recovery time")
-    tWR_nvm =  Param.Latency("Write recovery time")
+
     # minimum time between a read and precharge command
     tRTP = Param.Latency("Read to precharge")
 
@@ -239,8 +234,7 @@ class DRAMCtrl(QoSMemCtrl):
     # time to exit self-refresh mode with locked DLL
     tXSDLL = Param.Latency("0ns", "Self-refresh exit latency DLL")
 
-
-# Currently rolled into other params
+    # Currently rolled into other params
     ######################################################################
 
     # tRC  - assumed to be tRAS + tRP
@@ -403,242 +397,6 @@ class DDR3_1600_8x8(DRAMCtrl):
     IDD6 = '20mA'
     VDD = '1.5V'
 
-
-# A single NVM x64 channel (one command and address bus), with
-# timings based on a DDR3-1600 4 Gbit datasheet (Micron MT41J512M8) in
-# an 8x8 configuration.
-# channel capacity 4GB
-# 8 devices / rank * 2 rank / channel * 256MB / device = 4GB
-class NVM_1600_8x8(DRAMCtrl):
-    # size of device in bytes
-    device_size = '1GB'
-
-    # 8x8 configuration, 8 devices each with an 8-bit interface
-    device_bus_width = 8
-
-    # DDR3 is a BL8 device
-    burst_length = 8
-
-    # Each device has a page (row buffer) size of 1 Kbyte (1K columns x8)
-    device_rowbuffer_size = '1kB'
-
-    # 8x8 configuration, so 8 devices
-    devices_per_rank = 8
-
-    # Use two ranks
-    ranks_per_channel = 2
-
-    # DDR3 has 8 banks in all configurations
-    banks_per_rank = 8
-
-    # 800 MHz
-    tCK = '1.25ns'
-
-    # 8 beats across an x64 interface translates to 4 clocks @ 800 MHz
-    tBURST = '5ns'
-
-    # NVM-1600 11-58-80
-    tRCD = '72.5ns'
-    tCL = '13.75ns'
-    tRP = '13.75ns'
-    tRAS = '100ns'
-    tRRD = '6ns'
-    tXAW = '30ns'
-    activation_limit = 4
-    tRFC = '260ns'
-
-    tWR = '225ns'
-
-    # Greater of 4 CK or 7.5 ns
-    tWTR = '7.5ns'
-
-    # Greater of 4 CK or 7.5 ns
-    tRTP = '7.5ns'
-
-    # Default same rank rd-to-wr bus turnaround to 2 CK, @800 MHz = 2.5 ns
-    tRTW = '2.5ns'
-
-    # Default different rank bus delay to 2 CK, @800 MHz = 2.5 ns
-    tCS = '2.5ns'
-
-    # <=85C, half for >85C
-    tREFI = '7.8us'
-
-    # active powerdown and precharge powerdown exit time
-    tXP = '6ns'
-
-    # self refresh exit time
-    tXS = '270ns'
-
-    # Current values from datasheet Die Rev E,J
-    IDD0 = '55mA'
-    IDD2N = '32mA'
-    IDD3N = '38mA'
-    IDD4W = '125mA'
-    IDD4R = '157mA'
-    IDD5 = '235mA'
-    IDD3P1 = '38mA'
-    IDD2P1 = '32mA'
-    IDD6 = '20mA'
-    VDD = '1.5V'
-# A single NVM x64 channel (one command and address bus), with
-# timings based on a DDR3-1600 4 Gbit datasheet (Micron MT41J512M8) in
-# an 8x8 configuration.
-# 8 devices / rank * 1 rank / channel * 64MB / device = 512MB
-
-class DDR_NVM_4GB_8x2x128(DRAMCtrl):
-    # size of device in bytes
-    device_size = '128MB'
-
-    # 8x8 configuration, 8 devices each with an 8-bit interface
-    device_bus_width = 8
-
-    # DDR3 is a BL8 device
-    burst_length = 8
-
-    # Each device has a page (row buffer) size of 1 Kbyte (1K columns x8)
-    device_rowbuffer_size = '1kB'
-
-    # 8x8 configuration, so 8 devices
-    devices_per_rank = 8
-
-    # Use two ranks
-    ranks_per_channel = 2
-
-    # DDR3 has 8 banks in all configurations
-    banks_per_rank = 8
-
-    # 800 MHz
-    tCK = '1.25ns'
-
-    # 8 beats across an x64 interface translates to 4 clocks @ 800 MHz
-    tBURST = '5ns'
-
-    # NVM-1600 11-58-80
-    tRCD = '13.75ns'
-    tRCD_nvm = '72.ns'
-    tCL = '13.75ns'
-    tCL_nvm = '72.ns'
-    tRP = '13.75ns'
-    tRP_nvm = '13.75ns'
-    tRAS = '35ns'
-    tRAS_nvm = '100ns'
-    tRRD = '6ns'
-    tXAW = '30ns'
-    activation_limit = 4
-    tRFC = '260ns'
-
-    tWR = '30ns'
-    tWR_nvm = '225ns'
-
-    # Greater of 4 CK or 7.5 ns
-    tWTR = '7.5ns'
-
-    # Greater of 4 CK or 7.5 ns
-    tRTP = '7.5ns'
-
-    # Default same rank rd-to-wr bus turnaround to 2 CK, @800 MHz = 2.5 ns
-    tRTW = '2.5ns'
-
-    # Default different rank bus delay to 2 CK, @800 MHz = 2.5 ns
-    tCS = '2.5ns'
-
-    # <=85C, half for >85C
-    tREFI = '7.8us'
-
-    # active powerdown and precharge powerdown exit time
-    tXP = '6ns'
-
-    # self refresh exit time
-    tXS = '270ns'
-
-    # Current values from datasheet Die Rev E,J
-    IDD0 = '55mA'
-    IDD2N = '32mA'
-    IDD3N = '38mA'
-    IDD4W = '125mA'
-    IDD4R = '157mA'
-    IDD5 = '235mA'
-    IDD3P1 = '38mA'
-    IDD2P1 = '32mA'
-    IDD6 = '20mA'
-    VDD = '1.5V'
-
-
-
-class DDR_1600_8x8(DRAMCtrl):
-    # size of device in bytes
-    device_size = '128MB'
-
-    # 8x8 configuration, 8 devices each with an 8-bit interface
-    device_bus_width = 8
-
-    # DDR3 is a BL8 device
-    burst_length = 8
-
-    # Each device has a page (row buffer) size of 1 Kbyte (1K columns x8)
-    device_rowbuffer_size = '1kB'
-
-    # 8x8 configuration, so 8 devices
-    devices_per_rank = 8
-
-    # Use two ranks
-    ranks_per_channel = 1
-
-    # DDR3 has 8 banks in all configurations
-    banks_per_rank = 8
-
-    # 800 MHz
-    tCK = '1.25ns'
-
-    # 8 beats across an x64 interface translates to 4 clocks @ 800 MHz
-    tBURST = '5ns'
-
-    # DRAM-1600 11-11-28
-    tRCD = '13.75ns'
-    tCL = '13.75ns'
-    tRP = '13.75ns'
-    tRAS = '35ns'
-    tRRD = '6ns'
-    tXAW = '30ns'
-    activation_limit = 4
-    tRFC = '260ns'
-
-    tWR = '30ns'
-
-    # Greater of 4 CK or 7.5 ns
-    tWTR = '7.5ns'
-
-    # Greater of 4 CK or 7.5 ns
-    tRTP = '7.5ns'
-
-    # Default same rank rd-to-wr bus turnaround to 2 CK, @800 MHz = 2.5 ns
-    tRTW = '2.5ns'
-
-    # Default different rank bus delay to 2 CK, @800 MHz = 2.5 ns
-    tCS = '2.5ns'
-
-    # <=85C, half for >85C
-    tREFI = '7.8us'
-
-    # active powerdown and precharge powerdown exit time
-    tXP = '6ns'
-
-    # self refresh exit time
-    tXS = '270ns'
-
-    # Current values from datasheet Die Rev E,J
-    IDD0 = '55mA'
-    IDD2N = '32mA'
-    IDD3N = '38mA'
-    IDD4W = '125mA'
-    IDD4R = '157mA'
-    IDD5 = '235mA'
-    IDD3P1 = '38mA'
-    IDD2P1 = '32mA'
-    IDD6 = '20mA'
-    VDD = '1.5V'
-
 # A single HMC-2500 x32 model based on:
 # [1] DRAMSpec: a high-level DRAM bank modelling tool
 # developed at the University of Kaiserslautern. This high level tool
@@ -738,8 +496,7 @@ class HMC_2500_1x32(DDR3_1600_8x8):
     # than a full DRAM channel controller
     static_backend_latency='4ns'
     static_frontend_latency='4ns'
-    static_read_latency = '10ns'
-    static_write_latency = '50ns'
+
 # A single DDR3-2133 x64 channel refining a selected subset of the
 # options for the DDR-1600 configuration, based on the same DDR3-1600
 # 4 Gbit datasheet (Micron MT41J512M8). Most parameters are kept

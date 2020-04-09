@@ -69,6 +69,7 @@
 #include "mem/qport.hh"
 #include "params/DRAMCtrl.hh"
 #include "sim/eventq.hh"
+#define DRAM_NVM
 
 /**
  * The DRAM controller is a single-channel memory controller capturing
@@ -882,7 +883,7 @@ class DRAMCtrl : public QoS::MemCtrl
      * @param row Index of the row
      */
     void activateBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
-                      uint32_t row);
+                      uint32_t row, bool in_dram);
 
     /**
      * Precharge a given bank and also update when the precharge is
@@ -997,6 +998,14 @@ class DRAMCtrl : public QoS::MemCtrl
     const Tick wrToRdDly;
     const Tick rdToWrDly;
 
+    const Tick tCL_nvm;
+    const Tick tRP_nvm;
+    const Tick tWR_nvm;
+    const Tick tRCD_nvm;
+    const Tick tRAS_nvm;
+
+
+
     /**
      * Memory controller configuration initialized based on parameter
      * values.
@@ -1025,6 +1034,8 @@ class DRAMCtrl : public QoS::MemCtrl
      */
     const Tick backendLatency;
 
+    const Tick writeLatency;
+    const Tick readLatency;
     /**
      * Till when must we wait before issuing next RD/WR burst?
      */
