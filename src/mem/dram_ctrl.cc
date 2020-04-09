@@ -84,9 +84,13 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     minWritesPerSwitch(p->min_writes_per_switch),
     writesThisTime(0), readsThisTime(0),
     tCK(p->tCK), tRTW(p->tRTW), tCS(p->tCS), tBURST(p->tBURST),
-    tCCD_L_WR(p->tCCD_L_WR),
-    tCCD_L(p->tCCD_L), tRCD(p->tRCD), tCL(p->tCL), tRP(p->tRP), tRAS(p->tRAS),
-    tWR(p->tWR), tRTP(p->tRTP), tRFC(p->tRFC), tREFI(p->tREFI), tRRD(p->tRRD),
+    tCCD_L_WR(p->tCCD_L_WR), tCCD_L(p->tCCD_L),
+    tRCD(p->tRCD), tRCD_NVM(p->tRCD_NVM),
+    tCL(p->tCL), tCL_NVM(p->tCL),
+    tRP(p->tRP), tRP_NVM(p->tRP_NVM),
+    tRAS(p->tRAS), tRAS_NVM(p->tRAS_NVM),
+    tWR(p->tWR), tWR_NVM(p->tWR_NVM), tRTP(p->tRTP), tRFC(p->tRFC),
+    tREFI(p->tREFI), tRRD(p->tRRD),
     tRRD_L(p->tRRD_L), tXAW(p->tXAW), tXP(p->tXP), tXS(p->tXS),
     activationLimit(p->activation_limit), rankToRankDly(tCS + tBURST),
     wrToRdDly(tCL + tBURST + p->tWTR), rdToWrDly(tRTW + tBURST),
@@ -95,6 +99,8 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     maxAccessesPerRow(p->max_accesses_per_row),
     frontendLatency(p->static_frontend_latency),
     backendLatency(p->static_backend_latency),
+    readLatency(p->static_read_latency),
+    writeLatency(p->static_write_latency),
     nextBurstAt(0), prevArrival(0),
     nextReqTime(0),
     stats(*this),
@@ -109,12 +115,7 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     fatal_if(!isPowerOf2(burstSize), "DRAM burst size %d is not allowed, "
              "must be a power of two\n", burstSize);
     readQueue.resize(p->qos_priorities);
-    writeQueue.resize(p->qos_priorities);
-
-
-    for (int i = 0; i < ranksPerChannel; i++) {
-        Rank* rank = new Rank(*this, p, i);
-        ranks.push_back(rank);
+    writeQueue.resize(p->qos_priorities); for (int i = 0; i < ranksPerChannel; i++) { Rank* rank = new Rank(*this, p, i); ranks.push_back(rank);
     }
 
     // perform a basic check of the write thresholds
@@ -1091,6 +1092,9 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
 
     // for the state we need to track if it is a row hit or not
     bool row_hit = true;
+
+    // check the address to see its in DRAM or NVM region
+    // bool is_dram = dram_pkt->Addr
 
     // Determine the access latency and update the bank state
     if (bank.openRow == dram_pkt->row) {

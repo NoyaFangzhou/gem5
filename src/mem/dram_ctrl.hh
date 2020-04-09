@@ -980,10 +980,15 @@ class DRAMCtrl : public QoS::MemCtrl
     const Tick tCCD_L_WR;
     const Tick tCCD_L;
     const Tick tRCD;
+    const Tick tRCD_NVM;
     const Tick tCL;
+    const Tick tCL_NVM;
     const Tick tRP;
+    const Tick tRP_NVM;
     const Tick tRAS;
+    const Tick tRAS_NVM;
     const Tick tWR;
+    const Tick tWR_NVM;
     const Tick tRTP;
     const Tick tRFC;
     const Tick tREFI;
@@ -1025,6 +1030,8 @@ class DRAMCtrl : public QoS::MemCtrl
      */
     const Tick backendLatency;
 
+    const Tick readLatency;
+    const Tick writeLatency;
     /**
      * Till when must we wait before issuing next RD/WR burst?
      */
