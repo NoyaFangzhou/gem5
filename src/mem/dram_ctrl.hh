@@ -880,9 +880,10 @@ class DRAMCtrl : public QoS::MemCtrl
      * @param bank_ref Reference to the bank
      * @param act_tick Time when the activation takes place
      * @param row Index of the row
+     * @param this is a DRAM bank or NVM bank
      */
     void activateBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
-                      uint32_t row);
+                      uint32_t row, bool in_dram);
 
     /**
      * Precharge a given bank and also update when the precharge is

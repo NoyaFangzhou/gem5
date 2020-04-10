@@ -56,6 +56,7 @@
 #include "debug/QOS.hh"
 #include "sim/system.hh"
 
+#define DRAM_ADDR_RANGE 0x40000000
 using namespace std;
 using namespace Data;
 
@@ -93,7 +94,7 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     tREFI(p->tREFI), tRRD(p->tRRD),
     tRRD_L(p->tRRD_L), tXAW(p->tXAW), tXP(p->tXP), tXS(p->tXS),
     activationLimit(p->activation_limit), rankToRankDly(tCS + tBURST),
-    wrToRdDly(tCL + tBURST + p->tWTR), rdToWrDly(tRTW + tBURST),
+    wrToRdDly(tBURST + p->tWTR), rdToWrDly(tRTW + tBURST),
     memSchedPolicy(p->mem_sched_policy), addrMapping(p->addr_mapping),
     pageMgmt(p->page_policy),
     maxAccessesPerRow(p->max_accesses_per_row),
@@ -273,9 +274,16 @@ DRAMCtrl::recvAtomic(PacketPtr pkt)
 
     Tick latency = 0;
     if (pkt->hasData()) {
+#ifdef DRAM_NVM
+        bool in_dram = pkt->getAddr() < DRAM_ADDR_RANGE;
+#else
+        bool in_dram = true;
+#endif
         // this value is not supposed to be accurate, just enough to
         // keep things going, mimic a closed page
-        latency = tRP + tRCD + tCL;
+        //
+        // if pkt is in NVM, its latency will be computed by NVM params
+        latency = in_dram ? (tRP + tRCD + tCL) : (tRP_NVM + tRCD_NVM + tCL_NVM);
     }
     return latency;
 }
@@ -923,7 +931,7 @@ DRAMCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency)
 
 void
 DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
-                       Tick act_tick, uint32_t row)
+                       Tick act_tick, uint32_t row, bool in_dram)
 {
     assert(rank_ref.actTicks.size() == activationLimit);
 
@@ -942,6 +950,13 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
     ++rank_ref.numBanksActive;
     assert(rank_ref.numBanksActive <= banksPerRank);
 
+#ifdef DRAM_NVM
+    if (in_dram) {
+        DPRINTF(DRAM, "[ DRAM ]");
+    } else {
+        DPRINTF(DRAM, "[ NVM ]");
+    }
+#endif
     DPRINTF(DRAM, "Activate bank %d, rank %d at tick %lld, now got %d active\n",
             bank_ref.bank, rank_ref.rank, act_tick,
             ranks[rank_ref.rank]->numBanksActive);
@@ -953,11 +968,13 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
             timeStampOffset, bank_ref.bank, rank_ref.rank);
 
     // The next access has to respect tRAS for this bank
-    bank_ref.preAllowedAt = act_tick + tRAS;
+    bank_ref.preAllowedAt = act_tick + in_dram ? tRAS : tRAS_NVM;
 
     // Respect the row-to-column command delay for both read and write cmds
-    bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
-    bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
+    bank_ref.rdAllowedAt = std::max(act_tick + in_dram ? tRCD : tRCD_NVM, 
+                            bank_ref.rdAllowedAt);
+    bank_ref.wrAllowedAt = std::max(act_tick + in_dram ? tRCD : tRCD_NVM, 
+                            bank_ref.wrAllowedAt);
 
     // start by enforcing tRRD
     for (int i = 0; i < banksPerRank; i++) {
@@ -1036,8 +1053,12 @@ DRAMCtrl::prechargeBank(Rank& rank_ref, Bank& bank, Tick pre_at, bool trace)
 
     // no precharge allowed before this one
     bank.preAllowedAt = pre_at;
-
-    Tick pre_done_at = pre_at + tRP;
+    Tick pre_done_at;
+#ifdef NVM_DRAM
+    pre_done_at = pre_at + (bank.bank % 4 == 0) ? tRP : tRP_NVM;
+#else
+    pre_done_at = pre_at + tRP;
+#endif
 
     bank.actAllowedAt = std::max(bank.actAllowedAt, pre_done_at);
 
@@ -1094,8 +1115,11 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     bool row_hit = true;
 
     // check the address to see its in DRAM or NVM region
-    // bool is_dram = dram_pkt->Addr
-
+#ifdef DRAM_NVM
+    bool in_dram = dram_pkt->addr < DRAM_ADDR_RANGE;
+#else
+    bool in_dram = true;
+#endif
     // Determine the access latency and update the bank state
     if (bank.openRow == dram_pkt->row) {
         // nothing to do
@@ -1113,7 +1137,7 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
 
         // Record the activation and deal with all the global timing
         // constraints caused be a new activation (tRRD and tXAW)
-        activateBank(rank, bank, act_tick, dram_pkt->row);
+        activateBank(rank, bank, act_tick, dram_pkt->row, in_dram);
     }
 
     // respect any constraints on the command (e.g. tRCD or tCCD)
@@ -1125,7 +1149,8 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     Tick cmd_at = std::max({col_allowed_at, nextBurstAt, curTick()});
 
     // update the packet ready time
-    dram_pkt->readyTime = cmd_at + tCL + tBURST;
+    // tCL will be chosen according to the memory pkt locates
+    dram_pkt->readyTime = cmd_at + tBURST + in_dram ? tCL : tCL_NVM; 
 
     // update the time for the next read/write burst for each
     // bank (add a max with tCCD/tCCD_L/tCCD_L_WR here)
@@ -1145,13 +1170,15 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
                     // tCCD_L_WR is required for write-to-write
                     // Need to also take bus turnaround delays into account
                     dly_to_rd_cmd = dram_pkt->isRead() ?
-                                    tCCD_L : std::max(tCCD_L, wrToRdDly);
+                                    tCCD_L : std::max(tCCD_L, 
+                                            wrToRdDly + in_dram ? tCL : tCL_NVM);
                     dly_to_wr_cmd = dram_pkt->isRead() ?
                                     std::max(tCCD_L, rdToWrDly) : tCCD_L_WR;
                 } else {
                     // tBURST is default requirement for diff BG timing
                     // Need to also take bus turnaround delays into account
-                    dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+                    dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : 
+                                        (wrToRdDly +in_dram ? tCL : tCL_NVM);
                     dly_to_wr_cmd = dram_pkt->isRead() ? rdToWrDly : tBURST;
                 }
             } else {
@@ -1176,7 +1203,7 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // read to precharge constraint
     bank.preAllowedAt = std::max(bank.preAllowedAt,
                                  dram_pkt->isRead() ? cmd_at + tRTP :
-                                 dram_pkt->readyTime + tWR);
+                                 dram_pkt->readyTime + in_dram ? tWR : tWR_NVM);
 
     // increment the bytes accessed and the accesses per row
     bank.bytesAccessed += burstSize;
@@ -1272,7 +1299,7 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // conservative estimate of when we have to schedule the next
     // request to not introduce any unecessary bubbles. In most cases
     // we will wake up sooner than we have to.
-    nextReqTime = nextBurstAt - (tRP + tRCD);
+    nextReqTime = nextBurstAt - in_dram ? (tRP + tRCD) : (tRP_NVM + tRCD_NVM);
 
     // Update the stats and schedule the next request
     if (dram_pkt->isRead()) {
@@ -1642,21 +1669,29 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
 
             // if we have waiting requests for the bank, and it is
             // amongst the first available, update the mask
-            if (got_waiting[bank_id]) {
-                // make sure this rank is not currently refreshing.
+            if (got_waiting[bank_id]) { // make sure this rank is not currently refreshing.
                 assert(ranks[i]->inRefIdleState());
                 // simplistic approximation of when the bank can issue
                 // an activate, ignoring any rank-to-rank switching
                 // cost in this calculation
-                Tick act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
-                    std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
-                    std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
-
+                Tick act_at, col_at;
                 // When is the earliest the R/W burst can issue?
                 const Tick col_allowed_at = (busState == READ) ?
                                               ranks[i]->banks[j].rdAllowedAt :
                                               ranks[i]->banks[j].wrAllowedAt;
-                Tick col_at = std::max(col_allowed_at, act_at + tRCD);
+#ifdef DRAM_NVM
+                Tick RP_time = (bank_id % 4 == 0) ? tRP : tRP_NVM;
+                Tick RCD_time = (bank_id % 4 == 0) ? tRCD : tRCD_NVM;
+                act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+                    std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
+                    std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + RP_time;
+                col_at = std::max(col_allowed_at, act_at + RCD_time);
+#else
+                act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+                    std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
+                    std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
+                col_at = std::max(col_allowed_at, act_at + tRCD);
+#endif
 
                 // bank can issue burst back-to-back (seamlessly) with
                 // previous burst
