@@ -1003,7 +1003,7 @@ class DRAMCtrl : public QoS::MemCtrl
     const Tick tWR_nvm;
     const Tick tRCD_nvm;
     const Tick tRAS_nvm;
-
+    const Tick wrToRdDly_nvm;
 
 
     /**

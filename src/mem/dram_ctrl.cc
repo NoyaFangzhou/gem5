@@ -92,6 +92,7 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     wrToRdDly(tCL + tBURST + p->tWTR), rdToWrDly(tRTW + tBURST),
     tCL_nvm(p->tCL_nvm), tRP_nvm(p->tRP_nvm), tWR_nvm(p->tWR_nvm),
     tRCD_nvm(p->tRCD_nvm), tRAS_nvm(p->tRAS_nvm),
+    wrToRdDly_nvm(tCL_nvm + tBURST + p->tWTR),
     memSchedPolicy(p->mem_sched_policy), addrMapping(p->addr_mapping),
     pageMgmt(p->page_policy),
     maxAccessesPerRow(p->max_accesses_per_row),
@@ -1185,14 +1186,36 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
                     // tCCD_L is default requirement for same BG timing
                     // tCCD_L_WR is required for write-to-write
                     // Need to also take bus turnaround delays into account
-                    dly_to_rd_cmd = dram_pkt->isRead() ?
-                                    tCCD_L : std::max(tCCD_L, wrToRdDly);
+                    //
+                   #ifdef DRAM_NVM
+                        // update the packet ready time
+                       if (dram_pkt->addr < 0x40000000) //1 GB
+                       {
+                        dly_to_rd_cmd = dram_pkt->isRead() ?
+                                        tCCD_L : std::max(tCCD_L, wrToRdDly);
+                         }
+                       else {
+                        dly_to_rd_cmd = dram_pkt->isRead() ?
+                                    tCCD_L : std::max(tCCD_L, wrToRdDly_nvm);
+                         }
+                  #else
+                       dly_to_rd_cmd = dram_pkt->isRead() ?
+                                        tCCD_L : std::max(tCCD_L, wrToRdDly);
+                  #endif
                     dly_to_wr_cmd = dram_pkt->isRead() ?
                                     std::max(tCCD_L, rdToWrDly) : tCCD_L_WR;
                 } else {
                     // tBURST is default requirement for diff BG timing
                     // Need to also take bus turnaround delays into account
+                 #ifdef DRAM_NVM
+                        // update the packet ready time
+                if (dram_pkt->addr < 0x40000000) //1 GB
+                dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+                else
+                dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly_nvm;
+                   #else
                     dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+                   #endif
                     dly_to_wr_cmd = dram_pkt->isRead() ? rdToWrDly : tBURST;
                 }
             } else {
