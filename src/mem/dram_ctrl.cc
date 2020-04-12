@@ -1735,10 +1735,25 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
                 // simplistic approximation of when the bank can issue
                 // an activate, ignoring any rank-to-rank switching
                 // cost in this calculation
-                Tick act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+                Tick act_at;
+#ifdef DRAM_NVM
+                if (bank_id % 4 == 0) {
+                    act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
                     std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
                     std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
 
+                }
+                else {
+                     act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+                    std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
+            std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP_nvm;
+
+                }
+#else
+                act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+                    std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
+                    std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
+#endif
                 // When is the earliest the R/W burst can issue?
                 const Tick col_allowed_at = (busState == READ) ?
                                               ranks[i]->banks[j].rdAllowedAt :
