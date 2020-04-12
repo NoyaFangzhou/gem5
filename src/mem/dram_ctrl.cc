@@ -1063,8 +1063,15 @@ DRAMCtrl::prechargeBank(Rank& rank_ref, Bank& bank, Tick pre_at, bool trace)
     // no precharge allowed before this one
     bank.preAllowedAt = pre_at;
 
-    Tick pre_done_at = pre_at + tRP;
-
+    Tick pre_done_at;
+#ifdef DRAM_NVM
+    if (bank.bank %4 ==0)
+    pre_done_at = pre_at + tRP;
+    else
+    pre_done_at = pre_at + tRP_nvm;
+#else
+    pre_done_at = pre_at + tRP;
+#endif
     bank.actAllowedAt = std::max(bank.actAllowedAt, pre_done_at);
 
     assert(rank_ref.numBanksActive != 0);
@@ -1704,6 +1711,8 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
 
     // latest Tick for which ACT can occur without incurring additoinal
     // delay on the data bus
+    //
+
     const Tick hidden_act_max = std::max(min_col_at - tRCD, curTick());
 
     // Flag condition when burst can issue back-to-back with previous burst
@@ -1758,9 +1767,19 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
                 const Tick col_allowed_at = (busState == READ) ?
                                               ranks[i]->banks[j].rdAllowedAt :
                                               ranks[i]->banks[j].wrAllowedAt;
-                Tick col_at = std::max(col_allowed_at, act_at + tRCD);
 
-                // bank can issue burst back-to-back (seamlessly) with
+
+            Tick col_at;
+        #ifdef DRAM_NVM
+                if (bank_id % 4 == 0) {
+               col_at = std::max(col_allowed_at, act_at + tRCD);
+               }
+                else
+              col_at = std::max(col_allowed_at, act_at + tRCD_nvm);
+        #else
+              col_at = std::max(col_allowed_at, act_at + tRCD);
+        #endif
+              // bank can issue burst back-to-back (seamlessly) with
                 // previous burst
                 bool new_seamless_bank = col_at <= min_col_at;
 

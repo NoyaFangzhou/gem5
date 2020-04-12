@@ -486,9 +486,14 @@ class NVM_1600_8x8(DRAMCtrl):
 # an 8x8 configuration.
 # 8 devices / rank * 1 rank / channel * 64MB / device = 512MB
 
+
+
+# A single NVM x2 channel (one command and address bus)
+# channel capacity 2GB
+# 8 devices / rank * 2 rank / channel * 256MB / device = 4GB
 class DDR_NVM_4GB_8x2x128(DRAMCtrl):
     # size of device in bytes
-    device_size = '128MB'
+    device_size = '256MB'
 
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8
