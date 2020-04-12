@@ -339,6 +339,7 @@ class Packet : public Printable
     /// The address of the request.  This address could be virtual or
     /// physical, depending on the system configuration.
     Addr addr;
+    Addr pc;
 
     /// True if the request targets the secure memory space.
     bool _isSecure;
@@ -801,6 +802,7 @@ class Packet : public Printable
     {
         if (req->hasPaddr()) {
             addr = req->getPaddr();
+            pc = req->getPC();
             flags.set(VALID_ADDR);
             _isSecure = req->isSecure();
         }
