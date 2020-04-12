@@ -802,10 +802,16 @@ class Packet : public Printable
     {
         if (req->hasPaddr()) {
             addr = req->getPaddr();
-            pc = req->getPC();
+            //pc = req->getPC();
             flags.set(VALID_ADDR);
+          //  pc = req->getPC();
             _isSecure = req->isSecure();
         }
+
+        if (req->hasPC()) {
+          pc = req->getPC();
+          //flags.set(VALID_PC);
+      }
         if (req->hasSize()) {
             size = req->getSize();
             flags.set(VALID_SIZE);
