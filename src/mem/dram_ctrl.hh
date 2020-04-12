@@ -55,7 +55,9 @@
 #define __MEM_DRAM_CTRL_HH__
 
 #include <deque>
+#include <iomanip>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -767,6 +769,9 @@ class DRAMCtrl : public QoS::MemCtrl
      */
     void addToReadQueue(PacketPtr pkt, unsigned int pktCount);
 
+    void updatePageFreq(Addr addr);
+    void printPageFreq(void);
+
     /**
      * Decode the incoming pkt, create a dram_pkt and push to the
      * back of the write queue. \If the write q length is more than
@@ -916,6 +921,11 @@ class DRAMCtrl : public QoS::MemCtrl
      */
     std::vector<DRAMPacketQueue> readQueue;
     std::vector<DRAMPacketQueue> writeQueue;
+
+    /**
+     * Page access frequency
+     */
+    std::unordered_map<Addr, uint32_t> pageFreq;
 
     /**
      * To avoid iterating over the write queue to check for

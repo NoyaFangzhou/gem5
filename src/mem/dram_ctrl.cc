@@ -185,6 +185,10 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
         }
     }
 
+    // Register callback to dump page access count
+    Callback* cb = new MakeCallback<DRAMCtrl,
+                                    &DRAMCtrl::printPageFreq>(this);
+    Stats::registerDumpCallback(cb);
 }
 
 void
@@ -377,6 +381,27 @@ DRAMCtrl::decodeAddr(const PacketPtr pkt, Addr dramPktAddr, unsigned size,
 }
 
 void
+DRAMCtrl::updatePageFreq(Addr addr)
+{
+    // Update page access freqency
+    auto ppn = addr >> 12; // Assume 4KB page size
+    if (pageFreq.find(ppn) != pageFreq.end())
+        pageFreq[ppn] += 1;
+    else
+        pageFreq[ppn] = 1;
+}
+
+void
+DRAMCtrl::printPageFreq(void)
+{
+    std::cout << "========= Page Access Count =========" << std::endl;
+    for (auto const& pair: pageFreq) {
+        std::cout << std::setw(8) << std::hex << pair.first << ": "
+                  << std::dec << pair.second << std::endl;
+    }
+}
+
+void
 DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
 {
     // only add to the read queue here. whenever the request is
@@ -395,6 +420,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     Addr addr = base_addr;
     unsigned pktsServicedByWrQ = 0;
     BurstHelper* burst_helper = NULL;
+    updatePageFreq(addr);
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
                                  base_addr + pkt->getSize()) - addr;
@@ -494,6 +520,7 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
     // multiple DRAM packets
     const Addr base_addr = getCtrlAddr(pkt->getAddr());
     Addr addr = base_addr;
+    updatePageFreq(addr);
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
                                  base_addr + pkt->getSize()) - addr;
