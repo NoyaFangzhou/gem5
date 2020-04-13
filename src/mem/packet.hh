@@ -295,6 +295,7 @@ class Packet : public Printable
         /// Are the 'addr' and 'size' fields valid?
         VALID_ADDR             = 0x00000100,
         VALID_SIZE             = 0x00000200,
+        VALID_PC               = 0x00000400,
 
         /// Is the data pointer set to a value that shouldn't be freed
         /// when the packet is destroyed?
@@ -725,6 +726,9 @@ class Packet : public Printable
     void copyError(Packet *pkt) { assert(pkt->isError()); cmd = pkt->cmd; }
 
     Addr getAddr() const { assert(flags.isSet(VALID_ADDR)); return addr; }
+    bool isValidPC() const { return flags.isSet(VALID_PC); }
+    Addr getPC() const { return pc; }
+
     /**
      * Update the address of this packet mid-transaction. This is used
      * by the address mapper to change an already set address to a new
@@ -802,16 +806,15 @@ class Packet : public Printable
     {
         if (req->hasPaddr()) {
             addr = req->getPaddr();
-            //pc = req->getPC();
             flags.set(VALID_ADDR);
-          //  pc = req->getPC();
             _isSecure = req->isSecure();
         }
 
         if (req->hasPC()) {
           pc = req->getPC();
-          //flags.set(VALID_PC);
-      }
+          flags.set(VALID_ADDR);
+        }
+
         if (req->hasSize()) {
             size = req->getSize();
             flags.set(VALID_SIZE);

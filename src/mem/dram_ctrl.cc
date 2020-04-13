@@ -420,7 +420,11 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     Addr addr = base_addr;
     unsigned pktsServicedByWrQ = 0;
     BurstHelper* burst_helper = NULL;
+
     updatePageFreq(addr);
+    if (pkt->isValidPC())
+        cout << "Access from pc " << pkt->getPC() << std::endl;
+
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
                                  base_addr + pkt->getSize()) - addr;
