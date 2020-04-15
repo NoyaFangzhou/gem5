@@ -295,7 +295,7 @@ class Packet : public Printable
         /// Are the 'addr' and 'size' fields valid?
         VALID_ADDR             = 0x00000100,
         VALID_SIZE             = 0x00000200,
-
+        VALID_PC               = 0x00000400,
         /// Is the data pointer set to a value that shouldn't be freed
         /// when the packet is destroyed?
         STATIC_DATA            = 0x00001000,
@@ -725,6 +725,9 @@ class Packet : public Printable
     void copyError(Packet *pkt) { assert(pkt->isError()); cmd = pkt->cmd; }
 
     Addr getAddr() const { assert(flags.isSet(VALID_ADDR)); return addr; }
+    bool isValidPC() const { return flags.isSet(VALID_PC); }
+    Addr getPC() const { return pc; }
+
     /**
      * Update the address of this packet mid-transaction. This is used
      * by the address mapper to change an already set address to a new
@@ -810,7 +813,8 @@ class Packet : public Printable
 
         if (req->hasPC()) {
           pc = req->getPC();
-          //flags.set(VALID_PC);
+          //cout << "Access from pc req:" << req->getPC() << std::endl;
+          flags.set(VALID_PC);
       }
         if (req->hasSize()) {
             size = req->getSize();
@@ -834,6 +838,12 @@ class Packet : public Printable
             flags.set(VALID_ADDR);
             _isSecure = req->isSecure();
         }
+
+         if (req->hasPC()) {
+          pc = req->getPC();
+          //cout << "Access from pc req:" << req->getPC() << std::endl;
+          flags.set(VALID_PC);
+      }
         size = _blkSize;
         flags.set(VALID_SIZE);
     }
@@ -876,6 +886,12 @@ class Packet : public Printable
                 allocate();
             }
         }
+
+         if (req->hasPC()) {
+          pc = req->getPC();
+          //cout << "Access from pc req:" << req->getPC() << std::endl;
+          flags.set(VALID_PC);
+      }
     }
 
     /**
