@@ -55,7 +55,10 @@
 #define __MEM_DRAM_CTRL_HH__
 
 #include <deque>
+#include <iomanip>
 #include <string>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -69,7 +72,9 @@
 #include "mem/qport.hh"
 #include "params/DRAMCtrl.hh"
 #include "sim/eventq.hh"
+
 #define DRAM_NVM
+#define MAX_PAGE_METADATA 1024
 
 /**
  * The DRAM controller is a single-channel memory controller capturing
@@ -767,6 +772,8 @@ class DRAMCtrl : public QoS::MemCtrl
      * then pktCount is greater than one.
      */
     void addToReadQueue(PacketPtr pkt, unsigned int pktCount);
+    void updatePageFreq(Addr addr, Addr pc);
+    void printPageFreq(void);
 
     /**
      * Decode the incoming pkt, create a dram_pkt and push to the
@@ -917,6 +924,72 @@ class DRAMCtrl : public QoS::MemCtrl
      */
     std::vector<DRAMPacketQueue> readQueue;
     std::vector<DRAMPacketQueue> writeQueue;
+
+
+    /**
+     * Page access frequency
+     */
+    std::unordered_map<Addr, std::tuple<uint32_t, Addr> > pageFreq;
+
+    /*LEU structures*/
+    std::unordered_map<Addr, std::vector<
+      std::tuple<uint64_t, uint32_t>>> RIT_write; // Each entry is PC->
+                                  //(R11, Freq1), (RI2, Freq2) and so on
+
+    std::unordered_map<Addr,
+     std::tuple<Addr, uint32_t>> LATT_write; //Each entry is Page Frame Number
+                               //- < PC, Last access time stamp>
+
+    std::unordered_map<uint32_t, Addr> LATT_write_idx;
+
+    std::unordered_map<uint32_t, Addr> RIT_write_idx;
+
+    std::unordered_map<Addr, std::vector
+    <std::tuple<uint64_t, uint32_t>>> RIT_read; // Each entry is PC->
+                     // (R11, Freq1), (RI2, Freq2) and so on
+
+    std::unordered_map<Addr, std::tuple<Addr, uint32_t>> LATT_read;
+    //Each entry is Page Frame Number - < PC, Last access time stamp>
+
+    std::unordered_map<uint32_t, Addr> LATT_read_idx;
+
+    std::unordered_map<uint32_t, Addr> RIT_read_idx;
+
+
+
+  struct Page_metadata {
+       Addr pc;
+       Addr PFN;
+       uint64_t la;
+       int lru;
+    };
+    struct Page_metadata PMD[MAX_PAGE_METADATA];
+    uint64_t index_PMD;
+
+    void insert_PMD(Addr PFN, Addr  pc, uint64_t la);
+    int search_PMD(Addr PFN);
+    uint8_t get_PMD_pc(int index);
+    uint32_t get_PMD_la(int index);
+    uint32_t PMD_lru_victim();
+    void PMD_lru_update(int index);
+
+
+   uint64_t leu_logical_time_write;
+   uint64_t leu_logical_time_read;
+
+
+
+    uint32_t hash_func(uint64_t num);
+    uint8_t hash_func8(uint64_t num);
+
+  //  void leu_update(uint32_t set, uint32_t way, uint64_t ip,
+//uint64_t full_addr, uint8_t hit, double sampling_rate, uint64_t clock_time);
+   // Addr leu_victim(uint32_t cpu, uint64_t instr_id, uint32_t set,
+//const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type);
+
+
+    /////////////////////////
+
 
     /**
      * To avoid iterating over the write queue to check for

@@ -190,6 +190,11 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
         }
     }
 
+
+    // Register callback to dump page access count
+    Callback* cb = new MakeCallback<DRAMCtrl,
+                                    &DRAMCtrl::printPageFreq>(this);
+    Stats::registerDumpCallback(cb);
 }
 
 void
@@ -389,6 +394,31 @@ DRAMCtrl::decodeAddr(const PacketPtr pkt, Addr dramPktAddr, unsigned size,
 }
 
 void
+DRAMCtrl::updatePageFreq(Addr addr, Addr pc)
+{
+    // Update page access freqency
+    auto ppn = addr >> 12; // Assume 4KB page size
+    if (pageFreq.find(ppn) != pageFreq.end())
+        get<0>(pageFreq[ppn]) += 1;
+    else
+        get<0>(pageFreq[ppn]) = 1;
+
+    get<1>(pageFreq[ppn]) = pc;
+}
+
+void
+DRAMCtrl::printPageFreq(void)
+{
+    std::cout << "========= Page Access Count =========" << std::endl;
+    for (auto const& pair: pageFreq) {
+        std::cout << std::setw(8) << "PFN:"<< std::hex << pair.first
+       << "  Freq:"<< std::dec << get<0>(pair.second) << " Last PC:"
+       << std::hex << get<1>(pair.second) << std::endl;
+    }
+}
+
+
+void
 DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
 {
     // only add to the read queue here. whenever the request is
@@ -407,9 +437,11 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     Addr addr = base_addr;
     unsigned pktsServicedByWrQ = 0;
     BurstHelper* burst_helper = NULL;
+    updatePageFreq(addr, pkt->getPC());
 
        if (pkt->isValidPC())
-        cout << "Access from pc addToReadQueue: " << pkt->getPC() << std::endl;
+      std::cout << "Access from pc addToReadQueue: " <<
+              std::hex <<  pkt->getPC() << std::endl;
 
 
 
@@ -512,6 +544,14 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
     // multiple DRAM packets
     const Addr base_addr = getCtrlAddr(pkt->getAddr());
     Addr addr = base_addr;
+
+    updatePageFreq(addr, pkt->getPC());
+
+    if (pkt->isValidPC())
+      std::cout << "Access from pc addToWriteQueue: " <<
+              std::hex <<  pkt->getPC() << std::endl;
+
+
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
                                  base_addr + pkt->getSize()) - addr;
