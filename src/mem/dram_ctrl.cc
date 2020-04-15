@@ -424,7 +424,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     // only add to the read queue here. whenever the request is
     // eventually done, set the readyTime, and call schedule()
     assert(!pkt->isWrite());
-
+    leu_logical_time_read++;
     assert(pktCount != 0);
 
     // if the request size is larger than burst size, the pkt is split into
@@ -441,7 +441,8 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
 
        if (pkt->isValidPC())
       std::cout << "Access from pc addToReadQueue: " <<
-              std::hex <<  pkt->getPC() << std::endl;
+    std::hex <<  pkt->getPC() <<" Logical time:"<<
+    leu_logical_time_read << std::endl;
 
 
 
@@ -540,6 +541,9 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
     // eventually done, set the readyTime, and call schedule()
     assert(pkt->isWrite());
 
+    std::cout << "Add to Write Queue"<< std::endl;
+
+    leu_logical_time_write++;
     // if the request size is larger than burst size, the pkt is split into
     // multiple DRAM packets
     const Addr base_addr = getCtrlAddr(pkt->getAddr());
@@ -547,10 +551,11 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
 
     updatePageFreq(addr, pkt->getPC());
 
-    if (pkt->isValidPC())
+    if (pkt->isValidPC()) {
       std::cout << "Access from pc addToWriteQueue: " <<
-              std::hex <<  pkt->getPC() << std::endl;
-
+              std::hex <<  pkt->getPC() << " Logical time:"
+              << leu_logical_time_write << std::endl;
+     }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
