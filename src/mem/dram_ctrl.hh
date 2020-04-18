@@ -75,6 +75,11 @@
 
 #define DRAM_NVM
 #define MAX_PAGE_METADATA 1024
+#define USE_STRUCT false
+#define RIT_SIZE 256
+#define LATT_SIZE 64
+#define HIST_SIZE 7
+#define BUCKET_SIZE 10
 
 /**
  * The DRAM controller is a single-channel memory controller capturing
@@ -933,11 +938,11 @@ class DRAMCtrl : public QoS::MemCtrl
 
     /*LEU structures*/
     std::unordered_map<Addr, std::vector<
-      std::tuple<uint64_t, uint32_t>>> RIT_write; // Each entry is PC->
+      std::tuple<uint64_t, uint64_t>>> RIT_write; // Each entry is PC->
                                   //(R11, Freq1), (RI2, Freq2) and so on
 
     std::unordered_map<Addr,
-     std::tuple<Addr, uint32_t>> LATT_write; //Each entry is Page Frame Number
+     std::tuple<Addr, uint64_t>> LATT_write; //Each entry is Page Frame Number
                                //- < PC, Last access time stamp>
 
     std::unordered_map<uint32_t, Addr> LATT_write_idx;
@@ -945,10 +950,10 @@ class DRAMCtrl : public QoS::MemCtrl
     std::unordered_map<uint32_t, Addr> RIT_write_idx;
 
     std::unordered_map<Addr, std::vector
-    <std::tuple<uint64_t, uint32_t>>> RIT_read; // Each entry is PC->
+    <std::tuple<uint64_t, uint64_t>>> RIT_read; // Each entry is PC->
                      // (R11, Freq1), (RI2, Freq2) and so on
 
-    std::unordered_map<Addr, std::tuple<Addr, uint32_t>> LATT_read;
+    std::unordered_map<Addr, std::tuple<Addr, uint64_t>> LATT_read;
     //Each entry is Page Frame Number - < PC, Last access time stamp>
 
     std::unordered_map<uint32_t, Addr> LATT_read_idx;
@@ -968,8 +973,8 @@ class DRAMCtrl : public QoS::MemCtrl
 
     void insert_PMD(Addr PFN, Addr  pc, uint64_t la);
     int search_PMD(Addr PFN);
-    uint8_t get_PMD_pc(int index);
-    uint32_t get_PMD_la(int index);
+    Addr get_PMD_pc(int index);
+    uint64_t get_PMD_la(int index);
     uint32_t PMD_lru_victim();
     void PMD_lru_update(int index);
 
@@ -982,10 +987,10 @@ class DRAMCtrl : public QoS::MemCtrl
     uint32_t hash_func(uint64_t num);
     uint8_t hash_func8(uint64_t num);
 
-  //  void leu_update(uint32_t set, uint32_t way, uint64_t ip,
-//uint64_t full_addr, uint8_t hit, double sampling_rate, uint64_t clock_time);
-   // Addr leu_victim(uint32_t cpu, uint64_t instr_id, uint32_t set,
-//const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type);
+    void leu_update(Addr PFN, Addr pc,
+    bool write, bool hit, double sampling_rate, uint64_t clock_time);
+    Addr leu_victim();
+
 
 
     /////////////////////////

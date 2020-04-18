@@ -47,6 +47,8 @@
 
 #include "mem/dram_ctrl.hh"
 
+#include <random>
+
 #include "base/bitfield.hh"
 #include "base/trace.hh"
 #include "debug/DRAM.hh"
@@ -3005,3 +3007,380 @@ DRAMCtrlParams::create()
 {
     return new DRAMCtrl(this);
 }
+
+void DRAMCtrl::PMD_lru_update(int index)
+{
+    // update lru replacement state
+    for (uint32_t i = 0; i < MAX_PAGE_METADATA; i++)
+    {
+        if (PMD[i].lru < PMD[index].lru)
+        {
+            PMD[i].lru++;
+        }
+    }
+    PMD[index].lru = 0; // promote to the MRU position
+}
+
+
+uint32_t DRAMCtrl::PMD_lru_victim()
+{
+
+       uint32_t index=0;
+        for (index = 0; index < MAX_PAGE_METADATA; index++)
+        {
+            if (PMD[index].lru == MAX_PAGE_METADATA - 1)
+            {  break;
+            }
+        }
+
+
+     return index;
+}
+
+
+void DRAMCtrl::insert_PMD(Addr PFN, Addr pc, uint64_t la){
+
+        int index = search_PMD(PFN);
+
+        if (index != -1) { //found
+
+           PMD[index].pc = pc;
+           PMD[index].la = la;
+           PMD_lru_update(index);
+          return;
+        }//if close
+        else {
+
+           int victim = PMD_lru_victim();
+           PMD[victim].pc = pc;
+           PMD[victim].la = la;
+           PMD[victim].PFN = PFN;
+
+        }//else close
+
+}//function close
+
+
+
+Addr DRAMCtrl::get_PMD_pc(int index){
+
+        if (index == -1)
+        { cout << " Wrong index"<<endl;
+           return -1;
+        }
+
+        return PMD[index].pc;
+  }
+
+
+uint64_t DRAMCtrl::get_PMD_la(int index){
+
+        if (index == -1)
+        { cout << " Wrong index"<<endl;
+           return -1;
+        }
+
+        return PMD[index].la;
+  }
+
+int DRAMCtrl::search_PMD(Addr PFN){ //returns index if found
+
+    int i;
+    for (i=0; i < MAX_PAGE_METADATA; i++) {
+
+            if ( PFN == PMD[i].PFN  )
+                    return i;
+    }
+
+
+
+    return -1;
+}
+
+
+
+
+uint32_t DRAMCtrl::hash_func(uint64_t num)
+{
+
+    uint64_t p = 19;
+
+    return ((num >> 8) ^ ((num & 0x000000ff) * p));
+}
+
+
+uint8_t DRAMCtrl::hash_func8(uint64_t num)
+{
+
+    uint64_t p = 19;
+
+    return ((num >> 32) ^ ((num & 0xffffffff) * p));
+}
+
+
+void DRAMCtrl::leu_update(Addr PFN, Addr pc,
+                       bool write, bool hit,  double sampling_rate,
+                       uint64_t clock_time)
+{
+
+    pc = pc >> 2;
+
+    //Update latest block so, that it has least tesla
+    if (hit)
+    {
+        if (USE_STRUCT) {
+         insert_PMD(PFN, pc, clock_time);
+        }
+        else {
+
+        //block[set][way].leu_ip = pc;
+        ////get 32-bit signature, or 8-bit based on LESS
+        //block[set][way].leu_la =  clock_time;
+
+        }//else close
+    }
+
+    //  random sampling
+    std::default_random_engine generator;
+    std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    double number = distribution(generator);
+    if (number >= sampling_rate)
+    {
+        return;
+    }
+
+    auto PFN_idx = PFN % (LATT_SIZE);
+    //no point having more than 2^32 entries in LAT or RIT
+
+
+
+        // if the idx is existed and not consistent, remove the old one
+   if (!write) {
+
+        if (LATT_read_idx.count(PFN_idx) != 0)
+        {
+            auto old_PFN = LATT_read_idx[PFN_idx];
+            if (old_PFN != PFN)
+            {
+                LATT_read.erase(old_PFN);
+            }
+        }
+    }//if close
+   else {
+
+        if (LATT_write_idx.count(PFN_idx) != 0)
+        {
+            auto old_PFN = LATT_write_idx[PFN_idx];
+            if (old_PFN != PFN)
+            {
+                LATT_write.erase(old_PFN);
+            }
+        }
+
+   }//else close
+
+
+    uint64_t RI = 0;
+    Addr prev_pc = 0;
+
+    //LATT : map (PFN, tuple(pc, last access time) )
+ if (!write) {
+    if (LATT_read.find(PFN) == LATT_read.end())
+    { // no entry found in LAT
+        // Add entry to LAT
+        LATT_read.insert({PFN, make_tuple(pc, clock_time)});
+        LATT_read_idx[PFN_idx] = PFN;
+        //first entry to table, no need to do anything else
+        return;
+    }
+    else
+    { // else PC entry  present update table and calculate RI
+        //if PFN present
+        auto itr = LATT_read.find(PFN);
+        prev_pc = get<0>(itr->second);
+        //store previous PC
+        RI = (clock_time) - get<1>(itr->second);
+        //calculate RI and update last access dimension
+        get<1>(itr->second) = (clock_time);
+        //update last access
+        get<0>(itr->second) = pc;   //update PC
+    } //else close
+  }//if close
+ else {
+
+     if (LATT_write.find(PFN) == LATT_write.end())
+    { // no entry found in LAT
+        // Add entry to LAT
+        LATT_write.insert({PFN, make_tuple(pc, clock_time)});
+        LATT_write_idx[PFN_idx] = PFN;
+        //first entry to table, no need to do anything else
+        return;
+    }
+    else
+    { // else PC entry  present update table and calculate RI
+        //if PFN present
+        auto itr = LATT_write.find(PFN);
+        prev_pc = get<0>(itr->second);
+        //store previous PC
+        RI = (clock_time) - get<1>(itr->second);
+        //calculate RI and update last access dimension
+        get<1>(itr->second) = (clock_time);  //update last access
+        get<0>(itr->second) = pc;      //update PC
+    } //else close
+
+ }//else close
+
+
+
+
+
+    // check if PREV PC already present in PDT or not, if so then look for RI
+    // PDT (pc,  vector ( tuple(RI, freq))),
+
+    auto pc_idx = prev_pc % (RIT_SIZE);
+    //no point having more than 2^32 entries in LAT or RIT
+
+
+    if (!write) {
+        // if the idx is existed and not consistent, remove the old one
+        if (RIT_read_idx.count(pc_idx) != 0)
+        {
+            auto old_pc = RIT_read_idx[pc_idx];
+            if (old_pc != prev_pc)
+            {
+                RIT_read.erase(old_pc);
+            }
+        }
+    }//if close
+    else {
+
+        if (RIT_write_idx.count(pc_idx) != 0)
+        {
+            auto old_pc = RIT_write_idx[pc_idx];
+            if (old_pc != prev_pc)
+            {
+                RIT_write.erase(old_pc);
+            }
+        }
+
+    } //else close
+
+
+
+   if (!write) {
+    if (RIT_read.find(prev_pc) == RIT_read.end())
+    { // entry not found
+
+        vector<tuple<uint64_t, uint64_t>> new_entry;
+        new_entry.push_back(make_tuple(RI, 1));
+
+        RIT_read.insert({prev_pc, new_entry}); // not found new entry
+        RIT_read_idx[pc_idx] = prev_pc;
+    }
+    else
+    {
+        // add to existing entry
+        auto itr = RIT_read.find(prev_pc);
+        int flag = 0; //get vector < tuple <RI, freq> >
+        for (int i = 0; i < ((itr->second)).size(); i++)
+        {
+            if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI) &&
+                            (RI <= (get<0>((itr->second)[i]) - BUCKET_SIZE)))
+          //if current RI to insert is within BUCKET_SIZE of previous RI's
+            {             // found do
+                get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
+  //cout << "RI:"<<get<0>((itr->second)[i]) <<" FREQ:"<<
+  //get<1>((itr->second)[i]) << endl;
+            //increment frequency
+                flag = 1;
+                break;
+            } //if close
+        }     // for close
+
+        if (flag == 0)
+        { // add this new RI and frequency
+            (itr->second).push_back(make_tuple(RI, 1));
+            //cout << "RI:"<<RI <<" FREQ:"<< 1 << endl;
+        }
+
+        //karp hash
+        if (itr->second.size() > HIST_SIZE)
+        {
+            for (int i = 0; i < itr->second.size(); i++)
+            {
+                get<1>((itr->second)[i]) -= 1;
+            }
+            for (int i = 0; i < itr->second.size(); i++)
+            {
+                if (get<1>((itr->second)[i]) <= 0)
+                {
+                    (itr->second).erase(i + itr->second.begin());
+                }
+            }
+            get<1>((itr->second)[0]) -= itr->second.size() - 1;
+        }
+
+    } // else close
+
+  } //if read close
+   else {
+
+      if (RIT_write.find(prev_pc) == RIT_write.end())
+    { // entry not found
+
+        vector<tuple<uint64_t, uint64_t>> new_entry;
+        new_entry.push_back(make_tuple(RI, 1));
+
+        RIT_write.insert({prev_pc, new_entry}); // not found new entry
+        RIT_write_idx[pc_idx] = prev_pc;
+    }
+    else
+    {
+        // add to existing entry
+        auto itr = RIT_write.find(prev_pc);
+        int flag = 0; //get vector < tuple <RI, freq> >
+        for (int i = 0; i < ((itr->second)).size(); i++)
+        {
+         if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI)
+                        && (RI <= (get<0>((itr->second)[i]) - BUCKET_SIZE)))
+            //if current RI to insert is within BUCKET_SIZE of previous RI's
+            {            // found do
+                get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
+  //cout << "RI:"<<get<0>((itr->second)[i]) <<" FREQ:"<<
+  //get<1>((itr->second)[i]) << endl;
+   ////increment frequency
+                flag = 1;
+                break;
+            } //if close
+        }     // for close
+
+        if (flag == 0)
+        { // add this new RI and frequency
+            (itr->second).push_back(make_tuple(RI, 1));
+            //cout << "RI:"<<RI <<" FREQ:"<< 1 << endl;
+        }
+
+        //karp hash
+        if (itr->second.size() > HIST_SIZE)
+        {
+            for (int i = 0; i < itr->second.size(); i++)
+            {
+                get<1>((itr->second)[i]) -= 1;
+            }
+            for (int i = 0; i < itr->second.size(); i++)
+            {
+                if (get<1>((itr->second)[i]) <= 0)
+                {
+                    (itr->second).erase(i + itr->second.begin());
+                }
+            }
+            get<1>((itr->second)[0]) -= itr->second.size() - 1;
+        }
+
+    } // else close
+
+
+   }//else write close
+}
+
+
