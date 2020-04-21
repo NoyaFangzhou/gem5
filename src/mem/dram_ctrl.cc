@@ -92,9 +92,11 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     tRRD_L(p->tRRD_L), tXAW(p->tXAW), tXP(p->tXP), tXS(p->tXS),
     activationLimit(p->activation_limit), rankToRankDly(tCS + tBURST),
     wrToRdDly(tCL + tBURST + p->tWTR), rdToWrDly(tRTW + tBURST),
+#ifdef DRAM_NVM
     tCL_nvm(p->tCL_nvm), tRP_nvm(p->tRP_nvm), tWR_nvm(p->tWR_nvm),
     tRCD_nvm(p->tRCD_nvm), tRAS_nvm(p->tRAS_nvm),
     wrToRdDly_nvm(tCL_nvm + tBURST + p->tWTR),
+#endif    
     memSchedPolicy(p->mem_sched_policy), addrMapping(p->addr_mapping),
     pageMgmt(p->page_policy),
     maxAccessesPerRow(p->max_accesses_per_row),
@@ -441,10 +443,10 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     BurstHelper* burst_helper = NULL;
     updatePageFreq(addr, pkt->getPC());
 
-       if (pkt->isValidPC())
-      std::cout << "Access from pc addToReadQueue: " <<
-    std::hex <<  pkt->getPC() <<" Logical time:"<<
-    leu_logical_time_read << std::endl;
+     //  if (pkt->isValidPC())
+     // std::cout << "Access from pc addToReadQueue: " <<
+   // std::hex <<  pkt->getPC() <<" Logical time:"<<
+   // leu_logical_time_read << std::endl;
 
 
 
@@ -543,7 +545,7 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
     // eventually done, set the readyTime, and call schedule()
     assert(pkt->isWrite());
 
-    std::cout << "Add to Write Queue"<< std::endl;
+    //std::cout << "Add to Write Queue"<< std::endl;
 
     leu_logical_time_write++;
     // if the request size is larger than burst size, the pkt is split into
@@ -553,11 +555,11 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
 
     updatePageFreq(addr, pkt->getPC());
 
-    if (pkt->isValidPC()) {
-      std::cout << "Access from pc addToWriteQueue: " <<
-              std::hex <<  pkt->getPC() << " Logical time:"
-              << leu_logical_time_write << std::endl;
-     }
+   // if (pkt->isValidPC()) {
+    //  std::cout << "Access from pc addToWriteQueue: " <<
+     //         std::hex <<  pkt->getPC() << " Logical time:"
+    //          << leu_logical_time_write << std::endl;
+    // }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
@@ -1024,11 +1026,16 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
             timeStampOffset, bank_ref.bank, rank_ref.rank);
 
     // The next access has to respect tRAS for this bank
-   if (in_dram)
+#ifdef DRAM_NVM
+    if (in_dram)
     bank_ref.preAllowedAt = act_tick + tRAS;
    else
-        bank_ref.preAllowedAt = act_tick + tRAS_nvm;
+    bank_ref.preAllowedAt = act_tick + tRAS_nvm;
+#else
+    bank_ref.preAllowedAt = act_tick + tRAS;
+#endif
 
+#ifdef DRAM_NVM   
    if (in_dram) {
     // Respect the row-to-column command delay for both read and write cmds
     bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
@@ -1038,6 +1045,11 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
     bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
     bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
    }
+#else
+   bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
+   bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);    
+#endif
+
     // start by enforcing tRRD
     for (int i = 0; i < banksPerRank; i++) {
         // next activate to any bank in this rank must not happen
@@ -3008,7 +3020,7 @@ DRAMCtrlParams::create()
     return new DRAMCtrl(this);
 }
 
-void DRAMCtrl::PMD_lru_update(int index)
+void DRAMCtrl::PMD_lru_update(struct Page_metadata* PMD, int index)
 {
     // update lru replacement state
     for (uint32_t i = 0; i < MAX_PAGE_METADATA; i++)
@@ -3022,7 +3034,7 @@ void DRAMCtrl::PMD_lru_update(int index)
 }
 
 
-uint32_t DRAMCtrl::PMD_lru_victim()
+uint32_t DRAMCtrl::PMD_lru_victim(struct Page_metadata* PMD)
 {
 
        uint32_t index=0;
@@ -3038,20 +3050,20 @@ uint32_t DRAMCtrl::PMD_lru_victim()
 }
 
 
-void DRAMCtrl::insert_PMD(Addr PFN, Addr pc, uint64_t la){
+void DRAMCtrl::insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr pc, uint64_t la){
 
-        int index = search_PMD(PFN);
+        int index = search_PMD(PMD, PFN);
 
         if (index != -1) { //found
 
            PMD[index].pc = pc;
            PMD[index].la = la;
-           PMD_lru_update(index);
+           PMD_lru_update(PMD, index);
           return;
         }//if close
         else {
 
-           int victim = PMD_lru_victim();
+           int victim = PMD_lru_victim(PMD);
            PMD[victim].pc = pc;
            PMD[victim].la = la;
            PMD[victim].PFN = PFN;
@@ -3062,7 +3074,7 @@ void DRAMCtrl::insert_PMD(Addr PFN, Addr pc, uint64_t la){
 
 
 
-Addr DRAMCtrl::get_PMD_pc(int index){
+Addr DRAMCtrl::get_PMD_pc(struct Page_metadata* PMD, int index){
 
         if (index == -1)
         { cout << " Wrong index"<<endl;
@@ -3073,7 +3085,7 @@ Addr DRAMCtrl::get_PMD_pc(int index){
   }
 
 
-uint64_t DRAMCtrl::get_PMD_la(int index){
+uint64_t DRAMCtrl::get_PMD_la(struct Page_metadata* PMD, int index){
 
         if (index == -1)
         { cout << " Wrong index"<<endl;
@@ -3083,7 +3095,7 @@ uint64_t DRAMCtrl::get_PMD_la(int index){
         return PMD[index].la;
   }
 
-int DRAMCtrl::search_PMD(Addr PFN){ //returns index if found
+int DRAMCtrl::search_PMD(struct Page_metadata* PMD, Addr PFN){ //returns index if found
 
     int i;
     for (i=0; i < MAX_PAGE_METADATA; i++) {
@@ -3129,7 +3141,10 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
     if (hit)
     {
         if (USE_STRUCT) {
-         insert_PMD(PFN, pc, clock_time);
+         if(!write)		
+         insert_PMD(PMD_write, PFN, pc, clock_time);
+	 else
+          insert_PMD(PMD_read, PFN, pc, clock_time);		 
         }
         else {
 

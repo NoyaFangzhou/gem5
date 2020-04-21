@@ -75,7 +75,7 @@
 
 #define DRAM_NVM
 #define MAX_PAGE_METADATA 1024
-#define USE_STRUCT false
+#define USE_STRUCT true
 #define RIT_SIZE 256
 #define LATT_SIZE 64
 #define HIST_SIZE 7
@@ -968,15 +968,18 @@ class DRAMCtrl : public QoS::MemCtrl
        uint64_t la;
        int lru;
     };
-    struct Page_metadata PMD[MAX_PAGE_METADATA];
-    uint64_t index_PMD;
+    struct Page_metadata PMD_write[MAX_PAGE_METADATA];
+    struct Page_metadata PMD_read[MAX_PAGE_METADATA];
 
-    void insert_PMD(Addr PFN, Addr  pc, uint64_t la);
-    int search_PMD(Addr PFN);
-    Addr get_PMD_pc(int index);
-    uint64_t get_PMD_la(int index);
-    uint32_t PMD_lru_victim();
-    void PMD_lru_update(int index);
+    uint64_t index_PMD_write;
+    uint64_t index_PMD_read;
+
+    void insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr  pc, uint64_t la);
+    int search_PMD(struct Page_metadata* PMD, Addr PFN);
+    Addr get_PMD_pc(struct Page_metadata* PMD, int index);
+    uint64_t get_PMD_la(struct Page_metadata* PMD, int index);
+    uint32_t PMD_lru_victim(struct Page_metadata* PMD);
+    void PMD_lru_update(struct Page_metadata* PMD, int index);
 
 
    uint64_t leu_logical_time_write;
@@ -989,7 +992,7 @@ class DRAMCtrl : public QoS::MemCtrl
 
     void leu_update(Addr PFN, Addr pc,
     bool write, bool hit, double sampling_rate, uint64_t clock_time);
-    Addr leu_victim();
+    Addr leu_victim(struct Page_metadata* PMD);
 
 
 
@@ -1076,13 +1079,14 @@ class DRAMCtrl : public QoS::MemCtrl
     const Tick wrToRdDly;
     const Tick rdToWrDly;
 
+#ifdef DRAM_NVM
     const Tick tCL_nvm;
     const Tick tRP_nvm;
     const Tick tWR_nvm;
     const Tick tRCD_nvm;
     const Tick tRAS_nvm;
     const Tick wrToRdDly_nvm;
-
+#endif
 
     /**
      * Memory controller configuration initialized based on parameter

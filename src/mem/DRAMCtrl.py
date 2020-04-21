@@ -44,6 +44,7 @@
 #          Matthias Jung
 #          Erfan Azarkhish
 
+#Need to comment out if DRAM_NVM not defined
 from m5.params import *
 from m5.proxy import *
 from m5.objects.AbstractMemory import *
@@ -331,7 +332,7 @@ class DRAMCtrl(QoSMemCtrl):
 # an 8x8 configuration.
 class DDR3_1600_8x8(DRAMCtrl):
     # size of device in bytes
-    device_size = '512MB'
+    device_size = '256MB'
 
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8
@@ -409,9 +410,9 @@ class DDR3_1600_8x8(DRAMCtrl):
 # an 8x8 configuration.
 # channel capacity 4GB
 # 8 devices / rank * 2 rank / channel * 256MB / device = 4GB
-class NVM_1600_8x8(DRAMCtrl):
+class NVM_1600_8x8_4GB(DRAMCtrl):
     # size of device in bytes
-    device_size = '1GB'
+    device_size = '256MB' #4GB for 1 channel
 
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8
@@ -491,6 +492,7 @@ class NVM_1600_8x8(DRAMCtrl):
 # A single NVM x2 channel (one command and address bus)
 # channel capacity 2GB
 # 8 devices / rank * 2 rank / channel * 256MB / device = 4GB
+
 class DDR_NVM_4GB_8x2x128(DRAMCtrl):
     # size of device in bytes
     device_size = '256MB'
@@ -519,7 +521,15 @@ class DDR_NVM_4GB_8x2x128(DRAMCtrl):
     # 8 beats across an x64 interface translates to 4 clocks @ 800 MHz
     tBURST = '5ns'
 
+    #Comment the following definitions out if DRAM_NVM not defined
+    #tRCD_nvm 
+    #tCL_nvm 
+    #tRP_nvm 
+    #tRAS_nvm 
+    #tWR_nvm 
+    ##################
     # NVM-1600 11-58-80
+  
     tRCD = '13.75ns'
     tRCD_nvm = '72.ns'
     tCL = '13.75ns'
@@ -571,9 +581,161 @@ class DDR_NVM_4GB_8x2x128(DRAMCtrl):
 
 
 
-class DDR_1600_8x8(DRAMCtrl):
+class DDR_1600_8x8_1GB(DRAMCtrl):
     # size of device in bytes
-    device_size = '128MB'
+    device_size = '128MB' #1GB
+
+    # 8x8 configuration, 8 devices each with an 8-bit interface
+    device_bus_width = 8
+
+    # DDR3 is a BL8 device
+    burst_length = 8
+
+    # Each device has a page (row buffer) size of 1 Kbyte (1K columns x8)
+    device_rowbuffer_size = '1kB'
+
+    # 8x8 configuration, so 8 devices
+    devices_per_rank = 8
+
+    # Use two ranks
+    ranks_per_channel = 1
+
+    # DDR3 has 8 banks in all configurations
+    banks_per_rank = 8
+
+    # 800 MHz
+    tCK = '1.25ns'
+
+    # 8 beats across an x64 interface translates to 4 clocks @ 800 MHz
+    tBURST = '5ns'
+
+    # DRAM-1600 11-11-28
+    tRCD = '13.75ns'
+    tCL = '13.75ns'
+    tRP = '13.75ns'
+    tRAS = '35ns'
+    tRRD = '6ns'
+    tXAW = '30ns'
+    activation_limit = 4
+    tRFC = '260ns'
+
+    tWR = '30ns'
+
+    # Greater of 4 CK or 7.5 ns
+    tWTR = '7.5ns'
+
+    # Greater of 4 CK or 7.5 ns
+    tRTP = '7.5ns'
+
+    # Default same rank rd-to-wr bus turnaround to 2 CK, @800 MHz = 2.5 ns
+    tRTW = '2.5ns'
+
+    # Default different rank bus delay to 2 CK, @800 MHz = 2.5 ns
+    tCS = '2.5ns'
+
+    # <=85C, half for >85C
+    tREFI = '7.8us'
+
+
+    # active powerdown and precharge powerdown exit time
+    tXP = '6ns'
+
+    # self refresh exit time
+    tXS = '270ns'
+
+    # Current values from datasheet Die Rev E,J
+    IDD0 = '55mA'
+    IDD2N = '32mA'
+    IDD3N = '38mA'
+    IDD4W = '125mA'
+    IDD4R = '157mA'
+    IDD5 = '235mA'
+    IDD3P1 = '38mA'
+    IDD2P1 = '32mA'
+    IDD6 = '20mA'
+    VDD = '1.5V'
+
+
+
+class DDR_1600_8x8_4GB(DRAMCtrl):
+    # size of device in bytes
+    device_size = '512MB' #4GB
+
+    # 8x8 configuration, 8 devices each with an 8-bit interface
+    device_bus_width = 8
+
+    # DDR3 is a BL8 device
+    burst_length = 8
+
+    # Each device has a page (row buffer) size of 1 Kbyte (1K columns x8)
+    device_rowbuffer_size = '1kB'
+
+    # 8x8 configuration, so 8 devices
+    devices_per_rank = 8
+
+    # Use two ranks
+    ranks_per_channel = 1
+
+    # DDR3 has 8 banks in all configurations
+    banks_per_rank = 8
+
+    # 800 MHz
+    tCK = '1.25ns'
+
+    # 8 beats across an x64 interface translates to 4 clocks @ 800 MHz
+    tBURST = '5ns'
+
+    # DRAM-1600 11-11-28
+    tRCD = '13.75ns'
+    tCL = '13.75ns'
+    tRP = '13.75ns'
+    tRAS = '35ns'
+    tRRD = '6ns'
+    tXAW = '30ns'
+    activation_limit = 4
+    tRFC = '260ns'
+
+    tWR = '30ns'
+
+    # Greater of 4 CK or 7.5 ns
+    tWTR = '7.5ns'
+
+    # Greater of 4 CK or 7.5 ns
+    tRTP = '7.5ns'
+
+    # Default same rank rd-to-wr bus turnaround to 2 CK, @800 MHz = 2.5 ns
+    tRTW = '2.5ns'
+
+    # Default different rank bus delay to 2 CK, @800 MHz = 2.5 ns
+    tCS = '2.5ns'
+
+    # <=85C, half for >85C
+    tREFI = '7.8us'
+
+    
+    # active powerdown and precharge powerdown exit time
+    tXP = '6ns'
+
+    # self refresh exit time
+    tXS = '270ns'
+
+    # Current values from datasheet Die Rev E,J
+    IDD0 = '55mA'
+    IDD2N = '32mA'
+    IDD3N = '38mA'
+    IDD4W = '125mA'
+    IDD4R = '157mA'
+    IDD5 = '235mA'
+    IDD3P1 = '38mA'
+    IDD2P1 = '32mA'
+    IDD6 = '20mA'
+    VDD = '1.5V'
+
+
+
+class DDR_1600_8x8_2GB(DRAMCtrl):
+    # size of device in bytes
+    device_size = '256MB' #2GB
 
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8
