@@ -522,14 +522,14 @@ class DDR_NVM_4GB_8x2x128(DRAMCtrl):
     tBURST = '5ns'
 
     #Comment the following definitions out if DRAM_NVM not defined
-    #tRCD_nvm 
-    #tCL_nvm 
-    #tRP_nvm 
-    #tRAS_nvm 
-    #tWR_nvm 
+    #tRCD_nvm
+    #tCL_nvm
+    #tRP_nvm
+    #tRAS_nvm
+    #tWR_nvm
     ##################
     # NVM-1600 11-58-80
-  
+
     tRCD = '13.75ns'
     tRCD_nvm = '72.ns'
     tCL = '13.75ns'
@@ -712,7 +712,7 @@ class DDR_1600_8x8_4GB(DRAMCtrl):
     # <=85C, half for >85C
     tREFI = '7.8us'
 
-    
+
     # active powerdown and precharge powerdown exit time
     tXP = '6ns'
 

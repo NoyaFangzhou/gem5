@@ -96,7 +96,7 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     tCL_nvm(p->tCL_nvm), tRP_nvm(p->tRP_nvm), tWR_nvm(p->tWR_nvm),
     tRCD_nvm(p->tRCD_nvm), tRAS_nvm(p->tRAS_nvm),
     wrToRdDly_nvm(tCL_nvm + tBURST + p->tWTR),
-#endif    
+#endif
     memSchedPolicy(p->mem_sched_policy), addrMapping(p->addr_mapping),
     pageMgmt(p->page_policy),
     maxAccessesPerRow(p->max_accesses_per_row),
@@ -1035,7 +1035,7 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
     bank_ref.preAllowedAt = act_tick + tRAS;
 #endif
 
-#ifdef DRAM_NVM   
+#ifdef DRAM_NVM
    if (in_dram) {
     // Respect the row-to-column command delay for both read and write cmds
     bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
@@ -1047,7 +1047,7 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
    }
 #else
    bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
-   bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);    
+   bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
 #endif
 
     // start by enforcing tRRD
@@ -3141,10 +3141,10 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
     if (hit)
     {
         if (USE_STRUCT) {
-         if(!write)		
+         if (write)
          insert_PMD(PMD_write, PFN, pc, clock_time);
-	 else
-          insert_PMD(PMD_read, PFN, pc, clock_time);		 
+         else
+          insert_PMD(PMD_read, PFN, pc, clock_time);
         }
         else {
 
