@@ -429,6 +429,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     // eventually done, set the readyTime, and call schedule()
     assert(!pkt->isWrite());
     leu_logical_time_read++;
+    //leu_update(PFN, pc, false, bool hit, 1.0, leu_logical_time_read);
     assert(pktCount != 0);
 
     // if the request size is larger than burst size, the pkt is split into
@@ -442,6 +443,8 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     unsigned pktsServicedByWrQ = 0;
     BurstHelper* burst_helper = NULL;
     updatePageFreq(addr, pkt->getPC());
+    bool hit = true;
+    leu_update(addr >> 12, pkt->getPC() , false, hit, 1.0, leu_logical_time_read);
 
      //  if (pkt->isValidPC())
      // std::cout << "Access from pc addToReadQueue: " <<
@@ -554,6 +557,8 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
     Addr addr = base_addr;
 
     updatePageFreq(addr, pkt->getPC());
+    bool hit = true;
+    leu_update(addr >> 12, pkt->getPC() , true , hit, 1.0, leu_logical_time_write);
 
    // if (pkt->isValidPC()) {
     //  std::cout << "Access from pc addToWriteQueue: " <<
@@ -3020,10 +3025,10 @@ DRAMCtrlParams::create()
     return new DRAMCtrl(this);
 }
 
-void DRAMCtrl::PMD_lru_update(struct Page_metadata* PMD, int index)
+void DRAMCtrl::PMD_lru_update(struct Page_metadata* PMD, uint64_t index)
 {
     // update lru replacement state
-    for (uint32_t i = 0; i < MAX_PAGE_METADATA; i++)
+    for (uint64_t i = 0; i < MAX_PAGE_METADATA; i++)
     {
         if (PMD[i].lru < PMD[index].lru)
         {
@@ -3037,7 +3042,7 @@ void DRAMCtrl::PMD_lru_update(struct Page_metadata* PMD, int index)
 uint32_t DRAMCtrl::PMD_lru_victim(struct Page_metadata* PMD)
 {
 
-       uint32_t index=0;
+       uint64_t index=0;
         for (index = 0; index < MAX_PAGE_METADATA; index++)
         {
             if (PMD[index].lru == MAX_PAGE_METADATA - 1)
@@ -3052,7 +3057,7 @@ uint32_t DRAMCtrl::PMD_lru_victim(struct Page_metadata* PMD)
 
 void DRAMCtrl::insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr pc, uint64_t la){
 
-        int index = search_PMD(PMD, PFN);
+        uint64_t index = search_PMD(PMD, PFN);
 
         if (index != -1) { //found
 
@@ -3074,7 +3079,7 @@ void DRAMCtrl::insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr pc, uint64_t
 
 
 
-Addr DRAMCtrl::get_PMD_pc(struct Page_metadata* PMD, int index){
+Addr DRAMCtrl::get_PMD_pc(struct Page_metadata* PMD, uint64_t index){
 
         if (index == -1)
         { cout << " Wrong index"<<endl;
@@ -3085,7 +3090,7 @@ Addr DRAMCtrl::get_PMD_pc(struct Page_metadata* PMD, int index){
   }
 
 
-uint64_t DRAMCtrl::get_PMD_la(struct Page_metadata* PMD, int index){
+uint64_t DRAMCtrl::get_PMD_la(struct Page_metadata* PMD, uint64_t index){
 
         if (index == -1)
         { cout << " Wrong index"<<endl;
@@ -3095,7 +3100,7 @@ uint64_t DRAMCtrl::get_PMD_la(struct Page_metadata* PMD, int index){
         return PMD[index].la;
   }
 
-int DRAMCtrl::search_PMD(struct Page_metadata* PMD, Addr PFN){ //returns index if found
+uint64_t DRAMCtrl::search_PMD(struct Page_metadata* PMD, Addr PFN){ //returns index if found
 
     int i;
     for (i=0; i < MAX_PAGE_METADATA; i++) {
@@ -3137,15 +3142,31 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
 
     pc = pc >> 2;
 
+    uint64_t prev_pc_metadata;
+    uint64_t la_metadata;
+
     //Update latest block so, that it has least tesla
     if (hit)
     {
-        if (USE_STRUCT) {
-         if (write)
-         insert_PMD(PMD_write, PFN, pc, clock_time);
-         else
-          insert_PMD(PMD_read, PFN, pc, clock_time);
-        }
+        if (USE_METADATA) {
+	    
+
+         if (write) {
+               uint64_t index = search_PMD(PMD_write, PFN); 
+           	prev_pc_metadata = get_PMD_pc(PMD_write, index);
+           	la_metadata = get_PMD_la(PMD_write, index) ;
+		 
+		 insert_PMD(PMD_write, PFN, pc, clock_time);
+         
+	   }else {
+		 uint64_t index = search_PMD(PMD_read, PFN); 
+           	prev_pc_metadata = get_PMD_pc(PMD_read, index);
+           	la_metadata = get_PMD_la(PMD_read, index) ;  
+
+                 insert_PMD(PMD_read, PFN, pc, clock_time);
+         
+	    }
+	 }
         else {
 
         //block[set][way].leu_ip = pc;
@@ -3166,7 +3187,7 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
 
     auto PFN_idx = PFN % (LATT_SIZE);
     //no point having more than 2^32 entries in LAT or RIT
-
+    
 
 
         // if the idx is existed and not consistent, remove the old one
@@ -3206,7 +3227,10 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         LATT_read.insert({PFN, make_tuple(pc, clock_time)});
         LATT_read_idx[PFN_idx] = PFN;
         //first entry to table, no need to do anything else
-        return;
+        if(!hit)
+	return;
+	prev_pc = prev_pc_metadata ;
+	RI = (clock_time) - la_metadata;
     }
     else
     { // else PC entry  present update table and calculate RI
@@ -3229,7 +3253,10 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         LATT_write.insert({PFN, make_tuple(pc, clock_time)});
         LATT_write_idx[PFN_idx] = PFN;
         //first entry to table, no need to do anything else
-        return;
+        if(!hit)
+	return;
+	prev_pc = prev_pc_metadata ;
+        RI = (clock_time) - la_metadata;
     }
     else
     { // else PC entry  present update table and calculate RI
@@ -3399,3 +3426,144 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
 }
 
 
+void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double  expected_distance) {
+
+   if((*index)< MAX_PAGE_METADATA) {	
+    ranked[(*index)].PFN = PFN;
+    ranked[(*index)].ERD = expected_distance;
+    (*index)++;
+   }	    
+}
+
+
+void DRAMCtrl::sort_PFN(struct Rank_PFN* ranked, uint64_t index) {
+//Basic bubble sort
+    uint64_t i, j;
+
+    for ( i=0 ; i<(index-1); i++) {
+
+	  for ( j=0; j < (index-1-i); j++) {
+
+              if (ranked[j].ERD > ranked[j+1].ERD) {
+                 Addr temp_PFN = ranked[j].PFN;
+                 uint64_t temp_ERD = ranked[j].ERD;
+                 ranked[j].PFN = ranked[j+1].PFN;
+                 ranked[j].ERD = ranked[j+1].ERD;
+                 ranked[j+1].PFN = temp_PFN;
+                 ranked[j+1].ERD = temp_ERD;
+              }//if close
+
+	 } //for j close	  
+
+    }//for i close	    
+
+
+
+
+}	
+
+
+//need to call based on read or write
+Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
+
+              bool pc_look = true;	
+		uint8_t leu_pc;
+		uint32_t last_access;
+    uint64_t i;
+     for(i=0; i < MAX_PAGE_METADATA; i++) {
+		
+	     Addr PFN = PMD[i].PFN;
+
+		if(USE_METADATA) {
+    				uint64_t index = search_PMD(PMD, PFN);
+      				if(index!= -1)
+      				{
+ 	  				 leu_pc = get_PMD_pc(PMD, index);      //get ip for the particular cache block to look up PDT
+           			 	 last_access = get_PMD_la(PMD, index);
+      				         pc_look = true;
+				}	
+      				else
+     				 {
+           				 leu_pc = 0;      //get ip for the particular cache block to look up PDT
+            				 last_access = 0;  
+            				 pc_look = false;
+     				 }	      
+			}// if USE_QUEUE close
+		else
+		{
+		
+		}//else close     
+
+
+           	double expected_distance = 0;
+           	 uint64_t tesla, cnt = 0;
+
+	 	if(write) {    
+           		tesla = leu_logical_time_write - last_access;
+         	}
+	 	else { 
+          		tesla = leu_logical_time_read -last_access;		 
+         	}
+
+                if(write) {
+	       		 if (RIT_write.find(leu_pc) != RIT_write.end() && pc_look)
+               		 {
+                     		 vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_write[leu_pc]; //get the RI,FREQ vector for this ip
+	                	for (int i = 0; i < RI_FREQ.size(); i++)
+        	        	{ //get size of thes vector
+                	    		if (get<0>(RI_FREQ[i]) > tesla)
+                   			 {	                                     //get RI of the tuple
+                       				 auto RI = get<0>(RI_FREQ[i]);     //RI
+                       				 auto RI_cnt = get<1>(RI_FREQ[i]); //freq
+                        		 	 expected_distance += RI * RI_cnt; //calculate expected Reuse
+                       			 	 cnt += RI_cnt;
+                   			 } //if close
+                		} //for close
+              		} //if close
+            	 }//if write close
+		else {
+
+                        if (RIT_read.find(leu_pc) != RIT_read.end() && pc_look)
+                   	 {
+               		 	vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_read[leu_pc]; //get the RI,FREQ vector for this ip
+	               		 for (int i = 0; i < RI_FREQ.size(); i++)
+        	       		 { //get size of thes vector
+                	    		if (get<0>(RI_FREQ[i]) > tesla)
+                   			 {                                     //get RI of the tuple
+                      			 	 auto RI = get<0>(RI_FREQ[i]);     //RI
+                        			 auto RI_cnt = get<1>(RI_FREQ[i]); //freq
+                       				 expected_distance += RI * RI_cnt; //calculate expected Reuse
+                       				 cnt += RI_cnt;
+                   			 } //if close
+                		}//for close
+
+		          } //if close
+		}//else close	
+  		
+     
+		  if (cnt != 0)
+                    expected_distance = (expected_distance / cnt) - tesla;
+                   else
+	            expected_distance = tesla;
+
+		   if(!write)
+                 insert_ranked(ranked_read_PFNs, &index_read_PFN, PFN, expected_distance); 	
+		   else
+	          insert_ranked(ranked_write_PFNs, &index_write_PFN, PFN, expected_distance);		   
+
+       }//for close
+
+
+     Addr max_ERD_PFN;
+
+     if(!write) {
+     sort_PFN(ranked_read_PFNs, index_read_PFN);
+     max_ERD_PFN = ranked_read_PFNs[index_read_PFN-1].PFN;
+     }
+     else {
+     sort_PFN(ranked_write_PFNs, index_write_PFN);
+     max_ERD_PFN = ranked_read_PFNs[index_read_PFN-1].PFN;
+     }     
+
+     return max_ERD_PFN;
+}	

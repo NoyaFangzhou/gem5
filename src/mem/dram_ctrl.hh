@@ -74,13 +74,13 @@
 #include "sim/eventq.hh"
 
 #define DRAM_NVM
-#define MAX_PAGE_METADATA 1024
+#define MAX_PAGE_METADATA (1024*1024)
 #define USE_STRUCT true
 #define RIT_SIZE 256
 #define LATT_SIZE 64
 #define HIST_SIZE 7
 #define BUCKET_SIZE 10
-
+#define USE_METADATA true
 /**
  * The DRAM controller is a single-channel memory controller capturing
  * the most important timing constraints associated with a
@@ -971,19 +971,34 @@ class DRAMCtrl : public QoS::MemCtrl
     struct Page_metadata PMD_write[MAX_PAGE_METADATA];
     struct Page_metadata PMD_read[MAX_PAGE_METADATA];
 
+    
+  struct Rank_PFN {
+      Addr PFN;
+      uint64_t ERD;
+   };
+
+  struct Rank_PFN ranked_read_PFNs[MAX_PAGE_METADATA];
+  uint64_t index_read_PFN;
+  struct Rank_PFN ranked_write_PFNs[MAX_PAGE_METADATA];
+  uint64_t index_write_PFN;
+
+  void insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double expected_distance);
+  void sort_PFN(struct Rank_PFN* ranked, uint64_t index);
+
     uint64_t index_PMD_write;
     uint64_t index_PMD_read;
 
     void insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr  pc, uint64_t la);
-    int search_PMD(struct Page_metadata* PMD, Addr PFN);
-    Addr get_PMD_pc(struct Page_metadata* PMD, int index);
-    uint64_t get_PMD_la(struct Page_metadata* PMD, int index);
+    uint64_t search_PMD(struct Page_metadata* PMD, Addr PFN);
+    Addr get_PMD_pc(struct Page_metadata* PMD, uint64_t index);
+    uint64_t get_PMD_la(struct Page_metadata* PMD, uint64_t index);
     uint32_t PMD_lru_victim(struct Page_metadata* PMD);
-    void PMD_lru_update(struct Page_metadata* PMD, int index);
+    void PMD_lru_update(struct Page_metadata* PMD, uint64_t index);
 
 
-   uint64_t leu_logical_time_write;
-   uint64_t leu_logical_time_read;
+
+    uint64_t leu_logical_time_write;
+    uint64_t leu_logical_time_read;
 
 
 
@@ -992,8 +1007,8 @@ class DRAMCtrl : public QoS::MemCtrl
 
     void leu_update(Addr PFN, Addr pc,
     bool write, bool hit, double sampling_rate, uint64_t clock_time);
-    Addr leu_victim(struct Page_metadata* PMD);
-
+    Addr leu_victim(struct Page_metadata* PMD, bool write);
+   
 
 
     /////////////////////////
