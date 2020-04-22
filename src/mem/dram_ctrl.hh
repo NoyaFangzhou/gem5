@@ -994,7 +994,7 @@ class DRAMCtrl : public QoS::MemCtrl
     uint64_t get_PMD_la(struct Page_metadata* PMD, uint64_t index);
     uint32_t PMD_lru_victim(struct Page_metadata* PMD);
     void PMD_lru_update(struct Page_metadata* PMD, uint64_t index);
-
+   void printLEUStructs(void);
 
 
     uint64_t leu_logical_time_write;

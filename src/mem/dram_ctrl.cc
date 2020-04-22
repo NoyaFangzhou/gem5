@@ -198,7 +198,10 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     // Register callback to dump page access count
     Callback* cb = new MakeCallback<DRAMCtrl,
                                     &DRAMCtrl::printPageFreq>(this);
+    Callback* cb2 = new MakeCallback<DRAMCtrl,
+                                    &DRAMCtrl::printLEUStructs>(this);
     Stats::registerDumpCallback(cb);
+    Stats::registerDumpCallback(cb2);
 }
 
 void
@@ -421,6 +424,48 @@ DRAMCtrl::printPageFreq(void)
     }
 }
 
+void 
+DRAMCtrl::printLEUStructs(void)
+{
+  std::cout << "========= RIT =========" << std::endl;
+  std::cout << "--------- RIT write---------" << std::endl;
+     for (auto x : RIT_write)
+       {
+	       std::cout << "PC:" << x.first;
+        	 auto itr = x.second;
+       		 for (int i = 0; i < itr.size(); i++)
+       		 {
+			 std::cout << "   (RI:" << get<0>((x.second)[i]) << ", FREQ:" << unsigned(get<1>((x.second)[i])) << "),";
+       		 }
+		 std::cout << endl;
+       } //for close
+
+      std::cout << "--------- RIT read---------" << std::endl;
+     for (auto x : RIT_read)
+       {
+	       std::cout << "PC:" << x.first;
+        	 auto itr = x.second;
+       		 for (int i = 0; i < itr.size(); i++)
+       		 {
+			 std::cout << "   (RI:" << get<0>((x.second)[i]) << ", FREQ:" << unsigned(get<1>((x.second)[i])) << "),";
+       		 }
+		 std::cout << std::endl;
+      } //for close
+
+
+     std::cout << std::endl;
+   std::cout << "========= LATT =========" << std::endl;
+   std::cout << "----- LATT write ---------" << std::endl;
+    for (auto x : LATT_write)
+        std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
+    std::cout << endl;;
+   
+     std::cout << "----- LATT read ---------" << std::endl;
+    for (auto x : LATT_read)
+        std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
+    std::cout << endl;; 
+
+}
 
 void
 DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
@@ -3082,7 +3127,7 @@ void DRAMCtrl::insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr pc, uint64_t
 Addr DRAMCtrl::get_PMD_pc(struct Page_metadata* PMD, uint64_t index){
 
         if (index == -1)
-        { cout << " Wrong index"<<endl;
+        { //cout << " Wrong index"<<endl;
            return -1;
         }
 
@@ -3093,7 +3138,7 @@ Addr DRAMCtrl::get_PMD_pc(struct Page_metadata* PMD, uint64_t index){
 uint64_t DRAMCtrl::get_PMD_la(struct Page_metadata* PMD, uint64_t index){
 
         if (index == -1)
-        { cout << " Wrong index"<<endl;
+        { //cout << " Wrong index"<<endl;
            return -1;
         }
 
@@ -3152,17 +3197,27 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
 	    
 
          if (write) {
-               uint64_t index = search_PMD(PMD_write, PFN); 
+               uint64_t index = search_PMD(PMD_write, PFN);
+
+	       if(index != -1) {
+                         
            	prev_pc_metadata = get_PMD_pc(PMD_write, index);
            	la_metadata = get_PMD_la(PMD_write, index) ;
-		 
+	       }
+	       else
+		  hit = false;
+
 		 insert_PMD(PMD_write, PFN, pc, clock_time);
          
 	   }else {
-		 uint64_t index = search_PMD(PMD_read, PFN); 
+		
+		   uint64_t index = search_PMD(PMD_read, PFN); 
+		   if(index != -1) {
            	prev_pc_metadata = get_PMD_pc(PMD_read, index);
            	la_metadata = get_PMD_la(PMD_read, index) ;  
-
+                  }
+		   else
+		   hit = false;
                  insert_PMD(PMD_read, PFN, pc, clock_time);
          
 	    }
