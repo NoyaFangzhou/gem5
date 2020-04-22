@@ -340,6 +340,7 @@ class Packet : public Printable
     /// physical, depending on the system configuration.
     Addr addr;
     Addr pc;
+    bool in_nvm_flag;
 
     /// True if the request targets the secure memory space.
     bool _isSecure;
@@ -727,7 +728,8 @@ class Packet : public Printable
     Addr getAddr() const { assert(flags.isSet(VALID_ADDR)); return addr; }
     bool isValidPC() const { return flags.isSet(VALID_PC); }
     Addr getPC() const { return pc; }
-
+   //bool in_nvm() const { //get where frame is based on page table
+	                   // return true;}
     /**
      * Update the address of this packet mid-transaction. This is used
      * by the address mapper to change an already set address to a new
@@ -820,6 +822,7 @@ class Packet : public Printable
             size = req->getSize();
             flags.set(VALID_SIZE);
         }
+
     }
 
     /**
@@ -846,6 +849,7 @@ class Packet : public Printable
       }
         size = _blkSize;
         flags.set(VALID_SIZE);
+	
     }
 
     /**
@@ -892,6 +896,7 @@ class Packet : public Printable
           //cout << "Access from pc req:" << req->getPC() << std::endl;
           flags.set(VALID_PC);
       }
+	 
     }
 
     /**

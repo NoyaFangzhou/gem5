@@ -73,7 +73,8 @@
 #include "params/DRAMCtrl.hh"
 #include "sim/eventq.hh"
 
-#define DRAM_NVM
+#define DRAM_NVM_LEU
+//#define DRAM_NVM
 #define MAX_PAGE_METADATA (1024*1024)
 #define USE_STRUCT true
 #define RIT_SIZE 256
@@ -1009,7 +1010,7 @@ class DRAMCtrl : public QoS::MemCtrl
     bool write, bool hit, double sampling_rate, uint64_t clock_time);
     Addr leu_victim(struct Page_metadata* PMD, bool write);
    
-
+    bool in_nvm(Addr addr);
 
     /////////////////////////
 
@@ -1094,7 +1095,7 @@ class DRAMCtrl : public QoS::MemCtrl
     const Tick wrToRdDly;
     const Tick rdToWrDly;
 
-#ifdef DRAM_NVM
+#if defined(DRAM_NVM) || defined(DRAM_NVM_LEU)
     const Tick tCL_nvm;
     const Tick tRP_nvm;
     const Tick tWR_nvm;

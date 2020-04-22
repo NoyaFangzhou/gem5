@@ -92,7 +92,7 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     tRRD_L(p->tRRD_L), tXAW(p->tXAW), tXP(p->tXP), tXS(p->tXS),
     activationLimit(p->activation_limit), rankToRankDly(tCS + tBURST),
     wrToRdDly(tCL + tBURST + p->tWTR), rdToWrDly(tRTW + tBURST),
-#ifdef DRAM_NVM
+#if defined(DRAM_NVM) || defined(DRAM_NVM_LEU)
     tCL_nvm(p->tCL_nvm), tRP_nvm(p->tRP_nvm), tWR_nvm(p->tWR_nvm),
     tRCD_nvm(p->tRCD_nvm), tRAS_nvm(p->tRAS_nvm),
     wrToRdDly_nvm(tCL_nvm + tBURST + p->tWTR),
@@ -276,6 +276,15 @@ DRAMCtrl::startup()
     }
 }
 
+bool 
+DRAMCtrl::in_nvm(Addr addr) {
+
+
+	//Add logic to look you Intermmediate page table to check whether
+	//address is mapped to NVM region (true) or DRAM region (false)
+	return true;
+}
+
 Tick
 DRAMCtrl::recvAtomic(PacketPtr pkt)
 {
@@ -291,14 +300,27 @@ DRAMCtrl::recvAtomic(PacketPtr pkt)
     if (pkt->hasData()) {
         // this value is not supposed to be accurate, just enough to
         // keep things going, mimic a closed page
-#ifdef DRAM_NVM
+	//
+	// TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+	//  latency should be updated 
+
+ 
+ #ifdef DRAM_NVM_LEU
+        if (!in_nvm(pkt->getAddr())) 
+        latency = tRP + tRCD + tCL;
+        else
+         latency = tRP_nvm + tRCD_nvm + tCL_nvm;
+ #else
+	#ifdef DRAM_NVM
         if (pkt->getAddr() <  0x40000000) //1 GB
         latency = tRP + tRCD + tCL;
         else
          latency = tRP_nvm + tRCD_nvm + tCL_nvm;
-#else
-     latency = tRP + tRCD + tCL;
-#endif
+	#else
+    	 latency = tRP + tRCD + tCL;
+         #endif
+ #endif	 
+   
     }
     return latency;
 }
@@ -1076,29 +1098,57 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
             timeStampOffset, bank_ref.bank, rank_ref.rank);
 
     // The next access has to respect tRAS for this bank
-#ifdef DRAM_NVM
-    if (in_dram)
-    bank_ref.preAllowedAt = act_tick + tRAS;
-   else
-    bank_ref.preAllowedAt = act_tick + tRAS_nvm;
-#else
-    bank_ref.preAllowedAt = act_tick + tRAS;
-#endif
 
-#ifdef DRAM_NVM
-   if (in_dram) {
+ // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated 
+
+ 
+ #ifdef DRAM_NVM_LEU
+        if (in_dram) 
+        bank_ref.preAllowedAt = act_tick + tRAS;
+        else
+        bank_ref.preAllowedAt = act_tick + tRAS_nvm;
+ #else
+     #ifdef DRAM_NVM
+    	if (in_dram)
+    	bank_ref.preAllowedAt = act_tick + tRAS;
+   	else
+    	bank_ref.preAllowedAt = act_tick + tRAS_nvm;
+     #else
+    	bank_ref.preAllowedAt = act_tick + tRAS;
+     #endif
+ #endif	
+
+
+// TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated 
+
+ #ifdef DRAM_NVM_LEU
+ 	if (in_dram) {
+          // Respect the row-to-column command delay for both read and write cmds
+    		bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
+    		bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
+	}
+	else {
+         	bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
+    		bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
+	}
+ #else
+     #ifdef DRAM_NVM
+ 	if (in_dram) {
     // Respect the row-to-column command delay for both read and write cmds
-    bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
-    bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
-   }
-   else {
-    bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
-    bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
-   }
-#else
-   bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
-   bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
-#endif
+    		bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
+    		bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
+   	}
+   	else {
+    		bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
+    		bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
+  	 }
+     #else
+   		bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
+   		bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
+     #endif
+ #endif		
 
     // start by enforcing tRRD
     for (int i = 0; i < banksPerRank; i++) {
@@ -1179,14 +1229,24 @@ DRAMCtrl::prechargeBank(Rank& rank_ref, Bank& bank, Tick pre_at, bool trace)
     bank.preAllowedAt = pre_at;
 
     Tick pre_done_at;
-#ifdef DRAM_NVM
-    if (bank.bank %4 ==0)
-    pre_done_at = pre_at + tRP;
-    else
-    pre_done_at = pre_at + tRP_nvm;
-#else
-    pre_done_at = pre_at + tRP;
-#endif
+// TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated 
+
+ #ifdef DRAM_NVM_LEU
+        if (bank.bank%4 == 0) 
+        pre_done_at = pre_at + tRP;
+        else
+        pre_done_at = pre_at + tRP_nvm;
+ #else
+    #ifdef DRAM_NVM
+    	if (bank.bank %4 == 0)
+    	pre_done_at = pre_at + tRP;
+    	else
+    	pre_done_at = pre_at + tRP_nvm;
+    #else
+    	pre_done_at = pre_at + tRP;
+   #endif
+#endif 	
     bank.actAllowedAt = std::max(bank.actAllowedAt, pre_done_at);
 
     assert(rank_ref.numBanksActive != 0);
@@ -1259,18 +1319,27 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
         // Record the activation and deal with all the global timing
         // constraints caused be a new activation (tRRD and tXAW)
 
+// TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated 
 
-
-#ifdef DRAM_NVM
+ 
+ #ifdef DRAM_NVM_LEU
+        if (!in_nvm(dram_pkt->addr))
+      	activateBank(rank, bank, act_tick, dram_pkt->row, true);
+        else
+        activateBank(rank, bank, act_tick, dram_pkt->row, false);
+ #else
+       #ifdef DRAM_NVM
         if (dram_pkt->addr < 0x40000000) //1 GB
         {
          activateBank(rank, bank, act_tick, dram_pkt->row, true);
         }
         else
         activateBank(rank, bank, act_tick, dram_pkt->row, false);
-#else
+	#else
         activateBank(rank, bank, act_tick, dram_pkt->row, true);
-#endif
+ 	#endif
+ #endif	
 
     }
 
@@ -1282,15 +1351,26 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // the command; need minimum of tBURST between commands
     Tick cmd_at = std::max({col_allowed_at, nextBurstAt, curTick()});
 
-#ifdef DRAM_NVM
+ // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated 
+
+ 
+ #ifdef DRAM_NVM_LEU
+     if (!in_nvm(dram_pkt->addr))
+     dram_pkt->readyTime = cmd_at + tCL + tBURST;
+     else
+     dram_pkt->readyTime = cmd_at + tCL_nvm + tBURST;
+#else
+    #ifdef DRAM_NVM
     // update the packet ready time
      if (dram_pkt->addr < 0x40000000) //1 GB
-    dram_pkt->readyTime = cmd_at + tCL + tBURST;
-     else
-        dram_pkt->readyTime = cmd_at + tCL_nvm + tBURST;
-#else
      dram_pkt->readyTime = cmd_at + tCL + tBURST;
-#endif
+     else
+     dram_pkt->readyTime = cmd_at + tCL_nvm + tBURST;
+    #else
+     dram_pkt->readyTime = cmd_at + tCL + tBURST;
+    #endif
+#endif     
     // update the time for the next read/write burst for each
     // bank (add a max with tCCD/tCCD_L/tCCD_L_WR here)
     Tick dly_to_rd_cmd;
@@ -1308,36 +1388,57 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
                     // tCCD_L is default requirement for same BG timing
                     // tCCD_L_WR is required for write-to-write
                     // Need to also take bus turnaround delays into account
-                    //
-                   #ifdef DRAM_NVM
-                        // update the packet ready time
-                       if (dram_pkt->addr < 0x40000000) //1 GB
-                       {
-                        dly_to_rd_cmd = dram_pkt->isRead() ?
+                    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated 
+	
+		 #ifdef DRAM_NVM_LEU
+        		if (!in_nvm(dram_pkt->addr)) {
+			dly_to_rd_cmd = dram_pkt->isRead() ?
                                         tCCD_L : std::max(tCCD_L, wrToRdDly);
                          }
                        else {
                         dly_to_rd_cmd = dram_pkt->isRead() ?
                                     tCCD_L : std::max(tCCD_L, wrToRdDly_nvm);
                          }
-                  #else
-                       dly_to_rd_cmd = dram_pkt->isRead() ?
+                 #else
+                   	#ifdef DRAM_NVM
+                        // update the packet ready time
+                      	 if (dram_pkt->addr < 0x40000000)  {
+                        dly_to_rd_cmd = dram_pkt->isRead() ?
                                         tCCD_L : std::max(tCCD_L, wrToRdDly);
-                  #endif
+                         }
+                       	else {
+                        dly_to_rd_cmd = dram_pkt->isRead() ?
+                                    tCCD_L : std::max(tCCD_L, wrToRdDly_nvm);
+                         }
+                 	 #else
+                      	 dly_to_rd_cmd = dram_pkt->isRead() ?
+                                        tCCD_L : std::max(tCCD_L, wrToRdDly);
+                 	 #endif
+		#endif	 
                     dly_to_wr_cmd = dram_pkt->isRead() ?
                                     std::max(tCCD_L, rdToWrDly) : tCCD_L_WR;
                 } else {
                     // tBURST is default requirement for diff BG timing
-                    // Need to also take bus turnaround delays into account
-                 #ifdef DRAM_NVM
+                    // Need to also take bus turnaround delays into accounti
+		    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+       			 //  latency should be updated
+		#ifdef DRAM_NVM_LEU
+       			 if (!in_nvm(dram_pkt->addr))
+               		 dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+               		 else
+               		 dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly_nvm;
+                #else
+			#ifdef DRAM_NVM
                         // update the packet ready time
-                if (dram_pkt->addr < 0x40000000) //1 GB
-                dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
-                else
-                dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly_nvm;
-                   #else
-                    dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
-                   #endif
+               		 if (dram_pkt->addr < 0x40000000) //1 GB
+               		 dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+               		 else
+               		 dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly_nvm;
+                  	 #else
+                   	 dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+                	#endif
+		#endif	 
                     dly_to_wr_cmd = dram_pkt->isRead() ? rdToWrDly : tBURST;
                 }
             } else {
@@ -1360,7 +1461,24 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // If this is a write, we also need to respect the write recovery
     // time before a precharge, in the case of a read, respect the
     // read to precharge constraint
-    #ifdef DRAM_NVM
+    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated
+
+
+  #ifdef DRAM_NVM_LEU
+        if (!in_nvm(dram_pkt->addr)){
+	bank.preAllowedAt = std::max(bank.preAllowedAt,
+                                 dram_pkt->isRead() ? cmd_at + tRTP :
+                                 dram_pkt->readyTime + tWR);
+        }
+        else {
+               bank.preAllowedAt = std::max(bank.preAllowedAt,
+                                 dram_pkt->isRead() ? cmd_at + tRTP :
+                                 dram_pkt->readyTime + tWR_nvm);
+
+        }
+  #else
+      #ifdef DRAM_NVM
         if (dram_pkt->addr < 0x40000000) //1 GB
         {
                 bank.preAllowedAt = std::max(bank.preAllowedAt,
@@ -1373,11 +1491,12 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
                                  dram_pkt->readyTime + tWR_nvm);
 
         }
-    #else
+      #else
          bank.preAllowedAt = std::max(bank.preAllowedAt,
                                  dram_pkt->isRead() ? cmd_at + tRTP :
                                  dram_pkt->readyTime + tWR);
-   #endif
+      #endif
+ #endif	 
 
     // increment the bytes accessed and the accesses per row
     bank.bytesAccessed += burstSize;
@@ -1473,15 +1592,25 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // conservative estimate of when we have to schedule the next
     // request to not introduce any unecessary bubbles. In most cases
     // we will wake up sooner than we have to.
-    //
-  #ifdef DRAM_NVM
+    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated 
+
+ 
+ #ifdef DRAM_NVM_LEU
+          if (!in_nvm(dram_pkt->addr))
+         	 nextReqTime = nextBurstAt - (tRP + tRCD);
+             else
+            	 nextReqTime = nextBurstAt - (tRP_nvm + tRCD_nvm);
+ #else	
+  	#ifdef DRAM_NVM
              if (dram_pkt->addr < 0x40000000) //1 GB
              nextReqTime = nextBurstAt - (tRP + tRCD);
              else
              nextReqTime = nextBurstAt - (tRP_nvm + tRCD_nvm);
- #else
-           nextReqTime = nextBurstAt - (tRP + tRCD);
-#endif
+ 	#else
+            nextReqTime = nextBurstAt - (tRP + tRCD);
+	#endif
+ #endif	    
 
     // Update the stats and schedule the next request
     if (dram_pkt->isRead()) {
@@ -1860,9 +1989,13 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
                 // an activate, ignoring any rank-to-rank switching
                 // cost in this calculation
                 Tick act_at;
-#ifdef DRAM_NVM
-                if (bank_id % 4 == 0) {
-                    act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+	// TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated 
+
+ 
+ #ifdef DRAM_NVM_LEU
+        if (bank_id % 4 == 0){
+ 		act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
                     std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
                     std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
 
@@ -1873,11 +2006,27 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
             std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP_nvm;
 
                 }
-#else
+ #else
+ 
+	#ifdef DRAM_NVM
+                if (bank_id % 4 == 0) {
+                    act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+                    std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
+                    std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
+
+                }
+                else {
+                     act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+                    std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
+            	std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP_nvm;
+
+                }
+	#else
                 act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
                     std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
                     std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
-#endif
+	#endif
+ #endif		
                 // When is the earliest the R/W burst can issue?
                 const Tick col_allowed_at = (busState == READ) ?
                                               ranks[i]->banks[j].rdAllowedAt :
@@ -1885,15 +2034,27 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
 
 
             Tick col_at;
-        #ifdef DRAM_NVM
-                if (bank_id % 4 == 0) {
+	    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        //  latency should be updated
+	
+
+	 #ifdef DRAM_NVM_LEU
+        	if (bank_id % 4 == 0) {
                col_at = std::max(col_allowed_at, act_at + tRCD);
                }
                 else
-              col_at = std::max(col_allowed_at, act_at + tRCD_nvm);
+              	col_at = std::max(col_allowed_at, act_at + tRCD_nvm);
         #else
-              col_at = std::max(col_allowed_at, act_at + tRCD);
-        #endif
+             #ifdef DRAM_NVM
+                if (bank_id % 4 == 0) {
+              	 col_at = std::max(col_allowed_at, act_at + tRCD);
+               }
+                else
+              	col_at = std::max(col_allowed_at, act_at + tRCD_nvm);
+        	#else
+              	col_at = std::max(col_allowed_at, act_at + tRCD);
+        	#endif
+	#endif	
               // bank can issue burst back-to-back (seamlessly) with
                 // previous burst
                 bool new_seamless_bank = col_at <= min_col_at;
