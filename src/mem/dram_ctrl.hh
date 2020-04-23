@@ -82,6 +82,8 @@
 #define HIST_SIZE 7
 #define BUCKET_SIZE 10
 #define USE_METADATA true
+#define  SWAP_TRIGGER_THRESHOLD 1000
+    
 /**
  * The DRAM controller is a single-channel memory controller capturing
  * the most important timing constraints associated with a

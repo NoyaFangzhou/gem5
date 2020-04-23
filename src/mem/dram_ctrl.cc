@@ -517,8 +517,12 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
      // std::cout << "Access from pc addToReadQueue: " <<
    // std::hex <<  pkt->getPC() <<" Logical time:"<<
    // leu_logical_time_read << std::endl;
-
-
+    //Addr PFN_max_ERD;
+    if(leu_logical_time_read % SWAP_TRIGGER_THRESHOLD == 0) {
+       //PFN_max_ERD = leu_victim(PMD_read, false);
+       //use Rank_PFN ranked_read_PFN
+       //std::cout << PFN_max_ERD << std::endl;
+    }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
@@ -632,6 +636,12 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
      //         std::hex <<  pkt->getPC() << " Logical time:"
     //          << leu_logical_time_write << std::endl;
     // }
+   // Addr PFN_max_ERD;
+    if(leu_logical_time_write % SWAP_TRIGGER_THRESHOLD == 0) {
+       //PFN_max_ERD = leu_victim(PMD_write, true);
+       //use Rank_PFN ranked_read_PFN
+        //std::cout << PFN_max_ERD << std::endl;
+    }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
