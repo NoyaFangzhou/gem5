@@ -76,13 +76,15 @@
 #define DRAM_NVM_LEU
 //#define DRAM_NVM
 #define MAX_PAGE_METADATA (1024*1024)
+#define MAX_RANKED (1024*256)
 #define USE_STRUCT true
 #define RIT_SIZE 256
 #define LATT_SIZE 64
 #define HIST_SIZE 7
 #define BUCKET_SIZE 10
 #define USE_METADATA true
-#define  SWAP_TRIGGER_THRESHOLD 2000
+#define  SWAP_TRIGGER_THRESHOLD_READ 2000
+#define  SWAP_TRIGGER_THRESHOLD_WRITE 1000
     
 /**
  * The DRAM controller is a single-channel memory controller capturing
@@ -969,20 +971,22 @@ class DRAMCtrl : public QoS::MemCtrl
        Addr pc;
        Addr PFN;
        uint64_t la;
+       bool set;
        int lru;
     };
     struct Page_metadata PMD_write[MAX_PAGE_METADATA];
     struct Page_metadata PMD_read[MAX_PAGE_METADATA];
-
+   //uint64_t index_PMD_write;
+   //uint64_t index_PMD_read;
     
   struct Rank_PFN {
       Addr PFN;
       uint64_t ERD;
    };
 
-  struct Rank_PFN ranked_read_PFNs[MAX_PAGE_METADATA];
+  struct Rank_PFN ranked_read_PFNs[MAX_RANKED];
   uint64_t index_read_PFN;
-  struct Rank_PFN ranked_write_PFNs[MAX_PAGE_METADATA];
+  struct Rank_PFN ranked_write_PFNs[MAX_RANKED];
   uint64_t index_write_PFN;
 
   void insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double expected_distance);

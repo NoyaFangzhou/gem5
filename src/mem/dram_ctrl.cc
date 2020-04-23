@@ -209,6 +209,23 @@ DRAMCtrl::init()
 {
     MemCtrl::init();
 
+    //initilialize LRU for PMD
+    //
+    index_PMD_write=0;
+    index_PMD_read=0;
+    index_read_PFN=0;
+    index_write_PFN=0;
+    
+    uint64_t lru_index =0;
+    for(lru_index =0 ; lru_index < MAX_PAGE_METADATA ; lru_index++) {
+            PMD_write[lru_index].lru =lru_index;
+	    PMD_read[lru_index].lru =lru_index;
+	    PMD_write[lru_index].set = false;
+	    PMD_read[lru_index].set = false;
+    }
+    std::cout<<"LEU STRUCTURES INIT COMPLETE!!"<<std::endl;
+    //struct Page_metadata PMD_write[MAX_PAGE_METADATA];
+
    if (!port.isConnected()) {
         fatal("DRAMCtrl %s is unconnected!\n", name());
     } else {
@@ -459,7 +476,7 @@ DRAMCtrl::printLEUStructs(void)
        		 {
 			 std::cout << "   (RI:" << get<0>((x.second)[i]) << ", FREQ:" << unsigned(get<1>((x.second)[i])) << "),";
        		 }
-		 std::cout << endl;
+		 std::cout << std::endl;
        } //for close
 
       std::cout << "--------- RIT read---------" << std::endl;
@@ -480,19 +497,45 @@ DRAMCtrl::printLEUStructs(void)
     std::cout << "----- LATT write ---------" << std::endl;
     for (auto x : LATT_write)
         std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
-    std::cout << endl;;
+    std::cout << std::endl;;
    
      std::cout << "----- LATT read ---------" << std::endl;
     for (auto x : LATT_read)
         std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
-    std::cout << endl;; 
+    std::cout << std::endl;; 
+
+    
+    std::cout << "=============PMD read============" << std::endl;
+       for (uint64_t i=0 ; i<MAX_PAGE_METADATA; i++) {
+	       if(PMD_read[i].set)
+        std::cout << std::hex << "PFN:"<<PMD_read[i].PFN  << " PC:"<< std::hex <<PMD_read[i].pc <<" LAT:"<<std::hex<< PMD_read[i].la << std::endl;
+
+       }
+         
+       std::cout<<std::endl;
+
+        std::cout << "=============PMD write============" << std::endl;
+       for (uint64_t i=0 ; i<MAX_PAGE_METADATA; i++) {
+               if(PMD_write[i].set)
+        std::cout << std::hex << "PFN:"<<PMD_write[i].PFN  << " PC:"<< std::hex <<PMD_write[i].pc <<" LAT:"<<std::hex<< PMD_write[i].la << std::endl;
+
+       }
+
+       std::cout<<std::endl;
 
     std::cout << "========= Ranked_PFN =========" << std::endl;
     std::cout << "----- ranked_read_PFN ---------" << std::endl;
-    std::cout << "LEU victim flag:"<<leu_victim_flag << std::endl;
+    std::cout << "LEU victim flag:"<< leu_victim_flag << std::endl;
     for (uint64_t i=0 ; i<index_read_PFN; i++) {
 	    std::cout << std::hex << "PFN:"<<ranked_read_PFNs[i].PFN  << " ERD:"<<ranked_read_PFNs[i].ERD << std::endl;
          
+    }
+
+    std::cout << "----- ranked_write_PFN ---------" << std::endl;
+    std::cout << "LEU victim flag:"<< leu_victim_flag << std::endl;
+    for (uint64_t i=0 ; i<index_write_PFN; i++) {
+            std::cout << std::hex << "PFN:"<<ranked_write_PFNs[i].PFN  << " ERD:"<<ranked_write_PFNs[i].ERD << std::endl;
+
     }
    
 
@@ -527,10 +570,14 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
    // std::hex <<  pkt->getPC() <<" Logical time:"<<
    // leu_logical_time_read << std::endl;
     Addr PFN_max_ERD;
-    if(leu_logical_time_read % SWAP_TRIGGER_THRESHOLD == 0) {
+    if(leu_logical_time_read % SWAP_TRIGGER_THRESHOLD_READ == 0) {
        PFN_max_ERD = leu_victim(PMD_read, false);
+       //use Rank_PFN ranked_read_PFN for updating intermediate TLB and add swap page overhead
+       //ranked_read_PFN contains the 25% of the top pages based on minimum expected reuse distance
+       //iterate until index_read_PFN and read PFN as ranked_read_PFN[i].PFN to get page frame number, ranked_read_PFN[i].ERD to get ERD
+       //remember they are not sorted in the structure based on ERD relative to index
        //use Rank_PFN ranked_read_PFN
-       std::cout << PFN_max_ERD << std::endl;
+       std::cout << "addToReadQueue Max ERD PFN:"<<PFN_max_ERD << std::endl;
     }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
@@ -645,11 +692,14 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
      //         std::hex <<  pkt->getPC() << " Logical time:"
     //          << leu_logical_time_write << std::endl;
     // }
-   // Addr PFN_max_ERD;
-    if(leu_logical_time_write % SWAP_TRIGGER_THRESHOLD == 0) {
-       //PFN_max_ERD = leu_victim(PMD_write, true);
-       //use Rank_PFN ranked_read_PFN
-        //std::cout << PFN_max_ERD << std::endl;
+    Addr PFN_max_ERD;
+    if(leu_logical_time_write % SWAP_TRIGGER_THRESHOLD_WRITE == 0) {
+       PFN_max_ERD = leu_victim(PMD_write, true);
+       //use Rank_PFN ranked_write_PFN for updating intermediate TLB and add swap page overhead
+       //ranked_write_PFN contains the 25% of the top pages based on minimum expected reuse distance
+       //iterate until index_write_PFN and read PFN as ranked_write_PFN[i].PFN to get page frame number, ranked_write_PFN[i].ERD to get ERD
+       //remember they are not sorted in the structure based on ERD relative to index
+        std::cout <<"addToWriteQueue  Max ERD PFN:"<< PFN_max_ERD << std::endl;
     }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
@@ -3297,6 +3347,7 @@ void DRAMCtrl::insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr pc, uint64_t
            PMD[victim].pc = pc;
            PMD[victim].la = la;
            PMD[victim].PFN = PFN;
+           PMD[victim].set = true;      
 
         }//else close
 
@@ -3328,6 +3379,12 @@ uint64_t DRAMCtrl::get_PMD_la(struct Page_metadata* PMD, uint64_t index){
 uint64_t DRAMCtrl::search_PMD(struct Page_metadata* PMD, Addr PFN){ //returns index if found
 
     int i;
+    //uint64_t max;
+  //  if(write)
+//	    max = index_PMD_write;
+  //  else
+//	    max = index_PMD_read;
+
     for (i=0; i < MAX_PAGE_METADATA; i++) {
 
             if ( PFN == PMD[i].PFN  )
@@ -3663,11 +3720,34 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
 
 void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double  expected_distance) {
 
-   if((*index)< MAX_PAGE_METADATA) {	
+   if((*index)< MAX_RANKED) {	
     ranked[(*index)].PFN = PFN;
     ranked[(*index)].ERD = expected_distance;
     (*index)++;
-   }	    
+   }
+   else {
+    //find max ERD and evict it if less than max
+      uint64_t i=0;
+      uint64_t max_index = 0;
+      uint64_t max_ERD = 0;
+      //Addr max_PFN = 0;
+
+      for (i=0; i< MAX_RANKED ; i++) {
+           
+           if(ranked[i].ERD > max_ERD ) {
+                max_index = i;
+		max_ERD = ranked[i].ERD;
+		//max_PFN = ranked[i].PFN;
+
+	   }
+      }//for close
+
+      if( max_ERD > expected_distance) {
+           ranked[max_index].PFN = PFN;
+	   ranked[max_index].ERD = expected_distance;
+      } 
+
+  }	   
 }
 
 
@@ -3706,8 +3786,8 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
 	else
        index_write_PFN = 0;
 
-	//std::cout <<"1"<<std::endl;
-
+       Addr max_ERD_PFN;
+       uint64_t max_ERD =0 ;
 	leu_victim_flag = true;      
 	bool pc_look = true;	
 		uint8_t leu_pc;
@@ -3716,6 +3796,8 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
      for(i=0; i < MAX_PAGE_METADATA; i++) {
 		
 	     Addr PFN = PMD[i].PFN;
+              bool set = PMD[i].set;
+	     if(set) {
 
 		if(USE_METADATA) {
     				uint64_t index = search_PMD(PMD, PFN);
@@ -3784,34 +3866,44 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
 		}//else close	
   		
      
-		  if (cnt != 0)
+		  if (cnt != 0) {
                     expected_distance = (expected_distance / cnt) - tesla;
-                   else
-	            expected_distance = tesla;
+		  } else {
+		    expected_distance = tesla;
+                  }
+		  
+		 
+		 
+		   if( expected_distance >= max_ERD ) {
+			    max_ERD_PFN = PFN;
+                             max_ERD = expected_distance;
+		    }
 
 		   if(!write)
                  insert_ranked(ranked_read_PFNs, &index_read_PFN, PFN, expected_distance); 	
 		   else
 	          insert_ranked(ranked_write_PFNs, &index_write_PFN, PFN, expected_distance);		   
 
+	     }//is set close  
        }//for close
 
-    // std::cout <<"2"<<std::endl;
-     std::cout << "Index:"<<index_read_PFN<<std::endl;
-     Addr max_ERD_PFN;
+   
+     std::cout << "Index read PFN:"<<index_read_PFN<<std::endl;
+     std::cout << "Max ERD:"<<std::hex<< max_ERD <<"  Max PFN:"<<std::hex<< max_ERD_PFN <<std::endl;
+    //Sorting perfomed in insert itself, by keeping the ones with the mininum ERD, evicting max ERD PFN upon saturation
 
-     if(!write) {
+    // if(!write) {
           
-     sort_PFN(ranked_read_PFNs, index_read_PFN);
-     max_ERD_PFN = ranked_read_PFNs[index_read_PFN-1].PFN;
-     }
-     else {
+    // sort_PFN(ranked_read_PFNs, index_read_PFN);
+    // max_ERD_PFN = ranked_read_PFNs[index_read_PFN-1].PFN;
+    // }
+    // else {
          
-     sort_PFN(ranked_write_PFNs, index_write_PFN);
-     max_ERD_PFN = ranked_write_PFNs[index_write_PFN-1].PFN;
-     }     
+    // sort_PFN(ranked_write_PFNs, index_write_PFN);
+    // max_ERD_PFN = ranked_write_PFNs[index_write_PFN-1].PFN;
+    // }     
 
-      //std::cout <<"3"<<std::endl;
+    
 
      return max_ERD_PFN;
 }	
