@@ -476,8 +476,8 @@ DRAMCtrl::printLEUStructs(void)
 
 
      std::cout << std::endl;
-   std::cout << "========= LATT =========" << std::endl;
-   std::cout << "----- LATT write ---------" << std::endl;
+    std::cout << "========= LATT =========" << std::endl;
+    std::cout << "----- LATT write ---------" << std::endl;
     for (auto x : LATT_write)
         std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
     std::cout << endl;;
@@ -486,6 +486,15 @@ DRAMCtrl::printLEUStructs(void)
     for (auto x : LATT_read)
         std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
     std::cout << endl;; 
+
+    std::cout << "========= Ranked_PFN =========" << std::endl;
+    std::cout << "----- ranked_read_PFN ---------" << std::endl;
+    std::cout << "LEU victim flag:"<<leu_victim_flag << std::endl;
+    for (uint64_t i=0 ; i<index_read_PFN; i++) {
+	    std::cout << std::hex << "PFN:"<<ranked_read_PFNs[i].PFN  << " ERD:"<<ranked_read_PFNs[i].ERD << std::endl;
+         
+    }
+   
 
 }
 
@@ -517,11 +526,11 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
      // std::cout << "Access from pc addToReadQueue: " <<
    // std::hex <<  pkt->getPC() <<" Logical time:"<<
    // leu_logical_time_read << std::endl;
-    //Addr PFN_max_ERD;
+    Addr PFN_max_ERD;
     if(leu_logical_time_read % SWAP_TRIGGER_THRESHOLD == 0) {
-       //PFN_max_ERD = leu_victim(PMD_read, false);
+       PFN_max_ERD = leu_victim(PMD_read, false);
        //use Rank_PFN ranked_read_PFN
-       //std::cout << PFN_max_ERD << std::endl;
+       std::cout << PFN_max_ERD << std::endl;
     }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
@@ -3692,7 +3701,15 @@ void DRAMCtrl::sort_PFN(struct Rank_PFN* ranked, uint64_t index) {
 //need to call based on read or write
 Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
 
-              bool pc_look = true;	
+	if(!write)
+       index_read_PFN = 0;
+	else
+       index_write_PFN = 0;
+
+	//std::cout <<"1"<<std::endl;
+
+	leu_victim_flag = true;      
+	bool pc_look = true;	
 		uint8_t leu_pc;
 		uint32_t last_access;
     uint64_t i;
@@ -3779,17 +3796,22 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
 
        }//for close
 
-
+    // std::cout <<"2"<<std::endl;
+     std::cout << "Index:"<<index_read_PFN<<std::endl;
      Addr max_ERD_PFN;
 
      if(!write) {
+          
      sort_PFN(ranked_read_PFNs, index_read_PFN);
      max_ERD_PFN = ranked_read_PFNs[index_read_PFN-1].PFN;
      }
      else {
+         
      sort_PFN(ranked_write_PFNs, index_write_PFN);
-     max_ERD_PFN = ranked_read_PFNs[index_read_PFN-1].PFN;
+     max_ERD_PFN = ranked_write_PFNs[index_write_PFN-1].PFN;
      }     
+
+      //std::cout <<"3"<<std::endl;
 
      return max_ERD_PFN;
 }	

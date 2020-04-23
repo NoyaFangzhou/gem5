@@ -82,7 +82,7 @@
 #define HIST_SIZE 7
 #define BUCKET_SIZE 10
 #define USE_METADATA true
-#define  SWAP_TRIGGER_THRESHOLD 1000
+#define  SWAP_TRIGGER_THRESHOLD 2000
     
 /**
  * The DRAM controller is a single-channel memory controller capturing
@@ -997,14 +997,14 @@ class DRAMCtrl : public QoS::MemCtrl
     uint64_t get_PMD_la(struct Page_metadata* PMD, uint64_t index);
     uint32_t PMD_lru_victim(struct Page_metadata* PMD);
     void PMD_lru_update(struct Page_metadata* PMD, uint64_t index);
-   void printLEUStructs(void);
+    void printLEUStructs(void);
 
 
     uint64_t leu_logical_time_write;
     uint64_t leu_logical_time_read;
-
-
-
+   
+ 
+    bool leu_victim_flag; 
     uint32_t hash_func(uint64_t num);
     uint8_t hash_func8(uint64_t num);
 
