@@ -3598,7 +3598,7 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         int flag = 0; //get vector < tuple <RI, freq> >
         for (int i = 0; i < ((itr->second)).size(); i++){
             if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI) &&
-                            (RI <= (get<0>((itr->second)[i]) - BUCKET_SIZE))) {//if current RI to insert is within BUCKET_SIZE of previous RI's
+                            (RI >= (get<0>((itr->second)[i]) - BUCKET_SIZE))) {//if current RI to insert is within BUCKET_SIZE of previous RI's
                 get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
                  //increment frequency
                  flag = 1;
