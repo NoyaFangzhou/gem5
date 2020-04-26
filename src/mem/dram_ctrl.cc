@@ -3793,6 +3793,7 @@ void DRAMCtrl::sort_PFN(struct Rank_PFN* ranked, uint64_t index) {
 //need to call based on read or write
 // PMD is the page metadata of the currect memory access
 Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
+    
     if(!write)
         index_read_PFN = 0;
     else
@@ -3865,60 +3866,6 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
             } else {
                 expected_distance = tesla;
             }
-            if( expected_distance >= max_ERD ) {
-                max_ERD_PFN = PFN;
-                max_ERD = expected_distance;
-            }
-            if(!write)
-                insert_ranked(ranked_read_PFNs, &index_read_PFN, PFN, expected_distance);
-            else
-                insert_ranked(ranked_write_PFNs, &index_write_PFN, PFN, expected_distance);
-        }//is set close  
-    }//for close
-            double expected_distance = 0;
-            uint64_t tesla, cnt = 0;
-
-            if(write) {
-                tesla = leu_logical_time_write - last_access;
-            }
-            else {
-                tesla = leu_logical_time_read -last_access;
-            }
-            if(write) {
-                 if (RIT_write.find(leu_pc) != RIT_write.end() && pc_look) {
-                     vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_write[leu_pc]; //get the RI,FREQ vector for this ip
-                     for (int i = 0; i < RI_FREQ.size(); i++) { //get size of thes vector
-                         if (get<0>(RI_FREQ[i]) > tesla) {                                    //get RI of the tuple
-                             auto RI = get<0>(RI_FREQ[i]);     //RI
-                             auto RI_cnt = get<1>(RI_FREQ[i]); //freq
-                             expected_distance += RI * RI_cnt; //calculate expected Reuse
-                             cnt += RI_cnt;
-                         } //if close
-                     } //for close
-                 } //if close
-            }//if write close
-            else {
-                if (RIT_read.find(leu_pc) != RIT_read.end() && pc_look) {
-                    vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_read[leu_pc]; //get the RI,FREQ vector for this ip
-                    for (int i = 0; i < RI_FREQ.size(); i++) { //get size of thes vector
-                        if (get<0>(RI_FREQ[i]) > tesla)
-                        {                                     //get RI of the tuple
-                            auto RI = get<0>(RI_FREQ[i]);     //RI
-                            auto RI_cnt = get<1>(RI_FREQ[i]); //freq
-                            expected_distance += RI * RI_cnt; //calculate expected Reuse
-                            cnt += RI_cnt;
-                        } //if close
-                    }//for close
-                } //if close
-            }//else close
-            // compute the expected_distance for each entry of LEU table for
-            // specific PC
-            if (cnt != 0) {
-                expected_distance = (expected_distance / cnt) - tesla;
-            } else {
-                expected_distance = tesla;
-            }
-            // log the PFN with max expected distance
             if( expected_distance >= max_ERD ) {
                 max_ERD_PFN = PFN;
                 max_ERD = expected_distance;
