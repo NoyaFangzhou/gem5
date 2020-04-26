@@ -317,27 +317,24 @@ DRAMCtrl::recvAtomic(PacketPtr pkt)
     if (pkt->hasData()) {
         // this value is not supposed to be accurate, just enough to
         // keep things going, mimic a closed page
-	//
-	// TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-	//  latency should be updated 
-
- 
+        //
+        // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+        // latency should be updated  
  #ifdef DRAM_NVM_LEU
-        if (!in_nvm(pkt->getAddr())) 
-           latency = tRP + tRCD + tCL;
+        if (!in_nvm(pkt->getAddr()))
+            latency = tRP + tRCD + tCL;
         else
-           latency = tRP_nvm + tRCD_nvm + tCL_nvm;
- #else
-	#ifdef DRAM_NVM
+            latency = tRP_nvm + tRCD_nvm + tCL_nvm;
+#else
+#ifdef DRAM_NVM
         if (pkt->getAddr() <  0x40000000) //1 GB
-           latency = tRP + tRCD + tCL;
+            latency = tRP + tRCD + tCL;
         else
-           latency = tRP_nvm + tRCD_nvm + tCL_nvm;
-	#else
-    	latency = tRP + tRCD + tCL;
-        #endif
- #endif	 
-   
+            latency = tRP_nvm + tRCD_nvm + tCL_nvm;
+#else
+        latency = tRP + tRCD + tCL;
+#endif
+#endif
     }
     return latency;
 }
@@ -461,6 +458,14 @@ DRAMCtrl::printPageFreq(void)
        << "  Freq:"<< std::dec << get<0>(pair.second) << " Last PC:"
        << std::hex << get<1>(pair.second) << std::endl;
     }
+    std::cout << "========== DRAM Access Count =========" << std::endl;
+    std::cout << "Total DRAM Access: " << total_dram_read << std::endl;
+    std::cout << "Total DRAM Access: " << total_dram_write << std::endl;
+    std::cout << "Total DRAM Access: " << total_dram_read + total_dram_write << std::endl;
+    std::cout << "========== NVM Access Count =========" << std::endl;
+    std::cout << "Total NVM Read: " << total_nvm_read << std::endl;
+    std::cout << "Total NVM Write: " << total_nvm_write << std::endl;
+    std::cout << "Total NVM Access: " << total_nvm_read + total_nvm_write << std::endl;
 }
 
 void 
@@ -564,12 +569,24 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     BurstHelper* burst_helper = NULL;
     updatePageFreq(addr, pkt->getPC());
     bool hit = true;
+    // once there is an access
+    // we update RIT and LATT for this access
+    // this 2 tables will be updated for every page access
     leu_update(addr >> 12, pkt->getPC() , false, hit, 1.0, leu_logical_time_read);
 
-     //  if (pkt->isValidPC())
-     // std::cout << "Access from pc addToReadQueue: " <<
-   // std::hex <<  pkt->getPC() <<" Logical time:"<<
-   // leu_logical_time_read << std::endl;
+    if (in_nvm(addr)) {
+        total_nvm_read += 1;
+    } else {
+        total_dram_read += 1;
+    }
+    //  if (pkt->isValidPC())
+    //  std::cout << "Access from pc addToReadQueue: " <<
+    //  std::hex <<  pkt->getPC() <<" Logical time:"<<
+    //  leu_logical_time_read << std::endl;
+    //
+    //  When threshold meets
+    //  Update the LEU module and evict the one with lowest rank if its tracking
+    //  table is full
     Addr PFN_max_ERD;
     if(leu_logical_time_read % SWAP_TRIGGER_THRESHOLD_READ == 0) {
        PFN_max_ERD = leu_victim(PMD_read, false);
@@ -701,6 +718,12 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
        //iterate until index_write_PFN and read PFN as ranked_write_PFN[i].PFN to get page frame number, ranked_write_PFN[i].ERD to get ERD
        //remember they are not sorted in the structure based on ERD relative to index
         std::cout <<"addToWriteQueue  Max ERD PFN:"<< PFN_max_ERD << std::endl;
+    }
+    
+    if (in_nvm(base_addr)) {
+        total_nvm_write += 1;
+    } else {
+        total_dram_write += 1;
     }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
@@ -3313,41 +3336,35 @@ void DRAMCtrl::PMD_lru_update(struct Page_metadata* PMD, uint64_t index)
 
 uint32_t DRAMCtrl::PMD_lru_victim(struct Page_metadata* PMD)
 {
-
        uint64_t index=0;
-        for (index = 0; index < MAX_PAGE_METADATA; index++)
-        {
-            if (PMD[index].lru == MAX_PAGE_METADATA - 1)
-            {  break;
-            }
-        }
-
-
-     return index;
+       for (index = 0; index < MAX_PAGE_METADATA; index++)
+       {
+           if (PMD[index].lru == MAX_PAGE_METADATA - 1) {  break; }
+       }
+       return index;
 }
 
-
+// insert/update PMD table
+// if this PFN has been accessed before, PMD table had already had this entry
+// in this case, we replace the old entry with new PC, LAT
+// otherwise, we insert this entry to the PMD table or replace one from the PMD
+// table using LRU
 void DRAMCtrl::insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr pc, uint64_t la){
 
         uint64_t index = search_PMD(PMD, PFN);
-
         if (index != -1) { //found
-
            PMD[index].pc = pc;
            PMD[index].la = la;
            PMD_lru_update(PMD, index);
-          return;
+           return;
         }//if close
         else {
-
            int victim = PMD_lru_victim(PMD);
            PMD[victim].pc = pc;
            PMD[victim].la = la;
            PMD[victim].PFN = PFN;
            PMD[victim].set = true;      
-
         }//else close
-
 }//function close
 
 
@@ -3377,19 +3394,15 @@ uint64_t DRAMCtrl::search_PMD(struct Page_metadata* PMD, Addr PFN){ //returns in
 
     int i;
     //uint64_t max;
-  //  if(write)
-//	    max = index_PMD_write;
-  //  else
-//	    max = index_PMD_read;
+    //if(write)
+    //max = index_PMD_write;
+    //else
+    //max = index_PMD_read;
 
     for (i=0; i < MAX_PAGE_METADATA; i++) {
-
-            if (PFN == PMD[i].PFN)
-               return i;
+        if ( PFN == PMD[i].PFN  )
+            return i;
     }
-
-
-
     return -1;
 }
 
@@ -3418,45 +3431,44 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
                        bool write, bool hit,  double sampling_rate,
                        uint64_t clock_time)
 {
-
+    // remove the effect of align of pc
+    // last 2 bits always 0
     pc = pc >> 2;
 
     uint64_t prev_pc_metadata;
     uint64_t la_metadata;
 
     //Update latest block so, that it has least tesla
+    // whether the page is in DRAM or not
     if (hit)
     {
         if (USE_METADATA) {
-	    if (write) {
-               
-	       uint64_t index = search_PMD(PMD_write, PFN);
-	       if(index != -1) {
-             	  prev_pc_metadata = get_PMD_pc(PMD_write, index);
-           	  la_metadata = get_PMD_la(PMD_write, index) ;
-	       }
-	       else
-		  hit = false;
-	       insert_PMD(PMD_write, PFN, pc, clock_time);
-           
-	    }else {
-	      
-	       uint64_t index = search_PMD(PMD_read, PFN); 
-	       if(index != -1) {
-                  prev_pc_metadata = get_PMD_pc(PMD_read, index);
-                  la_metadata = get_PMD_la(PMD_read, index) ;  
-                }
-	        else
-	          hit = false;
-               insert_PMD(PMD_read, PFN, pc, clock_time);
+            if (write) {
+                uint64_t index = search_PMD(PMD_write, PFN);
+                // this write is in PMD Table
+                if(index != -1) {
+                    // get last access PC that access this PFN
+                    prev_pc_metadata = get_PMD_pc(PMD_write, index);
+                    // get the last access time that access this PFN
+                    la_metadata = get_PMD_la(PMD_write, index) ;
+                } 
+                else 
+                    hit = false;
+                // insert this PMD into the table
+                insert_PMD(PMD_write, PFN, pc, clock_time);
+            } else {
+                uint64_t index = search_PMD(PMD_read, PFN); 
+                if(index != -1) {
+                    prev_pc_metadata = get_PMD_pc(PMD_read, index);
+                    la_metadata = get_PMD_la(PMD_read, index) ;  
+                } else
+                    hit = false;
+                insert_PMD(PMD_read, PFN, pc, clock_time);
             }
-	}
-        else {
-
-        //block[set][way].leu_ip = pc;
-        ////get 32-bit signature, or 8-bit based on LESS
-        //block[set][way].leu_la =  clock_time;
-
+        } else {
+            //block[set][way].leu_ip = pc;
+            ////get 32-bit signature, or 8-bit based on LESS
+            //block[set][way].leu_la =  clock_time;
         }//else close
     }
 
@@ -3469,13 +3481,12 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
     }
 
     auto PFN_idx = PFN % (LATT_SIZE);
-    //no point having more than 2^32 entries in LAT or RIT
-    
-
-
-        // if the idx is existed and not consistent, remove the old one
-   if (!write) {
-
+    // no point having more than 2^32 entries in LAT or RIT
+    // if the idx is existed and not consistent, remove the old one
+    if (!write) {
+        // LATT_read/write is direct-mapped. When there is a mapping conflict
+        // LATT_read/write will remove the old one if the old PFN is not equal
+        // similar to RIT
         if (LATT_read_idx.count(PFN_idx) != 0) {
             auto old_PFN = LATT_read_idx[PFN_idx];
             if (old_PFN != PFN) {
@@ -3483,75 +3494,67 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
             }
         }
     }//if close
-   else {
-
+    else {
         if (LATT_write_idx.count(PFN_idx) != 0) {
             auto old_PFN = LATT_write_idx[PFN_idx];
             if (old_PFN != PFN) {
                 LATT_write.erase(old_PFN);
             }
         }
-
-   }//else close
-
+    }//else close
 
     uint64_t RI = 0;
     Addr prev_pc = 0;
-
     //LATT : map (PFN, tuple(pc, last access time) )
- if (!write) {
-    if (LATT_read.find(PFN) == LATT_read.end()){ // no entry found in LAT
-        // Add entry to LAT
-        LATT_read.insert({PFN, make_tuple(pc, clock_time)});
-        LATT_read_idx[PFN_idx] = PFN;
-        //first entry to table, no need to do anything else
-        if(!hit)
-	return;
-	prev_pc = prev_pc_metadata ;
-	RI = (clock_time) - la_metadata;
-    }
-    else
-    { // else PC entry  present update table and calculate RI
-        //if PFN present
-        auto itr = LATT_read.find(PFN);
-        prev_pc = get<0>(itr->second);
-        //store previous PC
-        RI = (clock_time) - get<1>(itr->second);
-        //calculate RI and update last access dimension
-        get<1>(itr->second) = (clock_time);
-        //update last access
-        get<0>(itr->second) = pc;   //update PC
-    } //else close
-  }//if close
- else {
-
-     if (LATT_write.find(PFN) == LATT_write.end()){ // no entry found in LAT
-        // Add entry to LAT
-        LATT_write.insert({PFN, make_tuple(pc, clock_time)});
-        LATT_write_idx[PFN_idx] = PFN;
-        //first entry to table, no need to do anything else
-        if(!hit)
-	return;
-	prev_pc = prev_pc_metadata ;
-        RI = (clock_time) - la_metadata;
-    }
-    else
-    { // else PC entry  present update table and calculate RI
-        //if PFN present
-        auto itr = LATT_write.find(PFN);
-        prev_pc = get<0>(itr->second);
-        //store previous PC
-        RI = (clock_time) - get<1>(itr->second);
-        //calculate RI and update last access dimension
-        get<1>(itr->second) = (clock_time);  //update last access
-        get<0>(itr->second) = pc;      //update PC
-    } //else close
-
- }//else close
-
-
-
-
+    if (!write) {
+        // first read to this PFN
+        if (LATT_read.find(PFN) == LATT_read.end())
+        { // no entry found in LAT
+            // Add entry to LAT
+            LATT_read.insert({PFN, make_tuple(pc, clock_time)});
+            LATT_read_idx[PFN_idx] = PFN;
+            //first entry to table, no need to do anything else
+            if(!hit)
+                return;
+            prev_pc = prev_pc_metadata ;
+            RI = (clock_time) - la_metadata;
+        }
+        else
+        { // else PC entry  present update table and calculate RI
+            //if PFN present
+            auto itr = LATT_read.find(PFN);
+            prev_pc = get<0>(itr->second);
+            //store previous PC
+            RI = (clock_time) - get<1>(itr->second);
+            //calculate RI and update last access dimension
+            get<1>(itr->second) = (clock_time);
+            //update last access
+            get<0>(itr->second) = pc;   //update PC
+        } //else close
+    }//if close
+    else {
+        if (LATT_write.find(PFN) == LATT_write.end()) { // no entry found in LAT
+            // Add entry to LAT
+            LATT_write.insert({PFN, make_tuple(pc, clock_time)});
+            LATT_write_idx[PFN_idx] = PFN;
+            //first entry to table, no need to do anything else
+            if(!hit)
+                return;
+            prev_pc = prev_pc_metadata ;
+            RI = (clock_time) - la_metadata;
+        }
+        else
+        { // else PC entry  present update table and calculate RI
+            //if PFN present
+            auto itr = LATT_write.find(PFN);
+            prev_pc = get<0>(itr->second);
+            //store previous PC
+            RI = (clock_time) - get<1>(itr->second);
+            //calculate RI and update last access dimension
+            get<1>(itr->second) = (clock_time);  //update last access
+            get<0>(itr->second) = pc;      //update PC
+        } //else close
+     }//else close
 
     // check if PREV PC already present in PDT or not, if so then look for RI
     // PDT (pc,  vector ( tuple(RI, freq))),
@@ -3579,49 +3582,62 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         }
 
     } //else close
-
-
-
-   if (!write) {
-    if (RIT_read.find(prev_pc) == RIT_read.end()) { // entry not found
-
-        vector<tuple<uint64_t, uint64_t>> new_entry;
-        new_entry.push_back(make_tuple(RI, 1));
-
-        RIT_read.insert({prev_pc, new_entry}); // not found new entry
-        RIT_read_idx[pc_idx] = prev_pc;
-    }
-    else
-    {
-        // add to existing entry
-        auto itr = RIT_read.find(prev_pc);
-        int flag = 0; //get vector < tuple <RI, freq> >
-        for (int i = 0; i < ((itr->second)).size(); i++){
-            if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI) &&
-                            (RI >= (get<0>((itr->second)[i]) - BUCKET_SIZE))) {//if current RI to insert is within BUCKET_SIZE of previous RI's
-                get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
-                 //increment frequency
-                 flag = 1;
-                 break;
-            } //if close
-        }     // for close
-
-        if (flag == 0){
-         // add this new RI and frequency
-            (itr->second).push_back(make_tuple(RI, 1));
-            //cout << "RI:"<<RI <<" FREQ:"<< 1 << endl;
+    if (!write) {
+        if (RIT_read.find(prev_pc) == RIT_read.end())
+        { // entry not found
+            // first reuse for this pc
+            vector<tuple<uint64_t, uint64_t>> new_entry;
+            new_entry.push_back(make_tuple(RI, 1));
+            // update reuse interval table
+            RIT_read.insert({prev_pc, new_entry}); // not found new entry
+            RIT_read_idx[pc_idx] = prev_pc;
         }
+        else
+        {
+            // add to existing entry
+            auto itr = RIT_read.find(prev_pc);
+            int flag = 0; //get vector < tuple <RI, freq> >
+            // iterate RIT for this PC
+            //
+            for (int i = 0; i < ((itr->second)).size(); i++)
+            {
+                // ordered by RI
+                if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI) &&
+                                (RI >= (get<0>((itr->second)[i]) - BUCKET_SIZE)))
+                    //if current RI to insert is within BUCKET_SIZE of previous RI's
+                {             // found do
+                    get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
+                    //cout << "RI:"<<get<0>((itr->second)[i]) <<" FREQ:"<<
+                    //get<1>((itr->second)[i]) << endl;
+                    //increment frequency
+                    flag = 1;
+                    break;
+                } //if close
+            }     // for close
 
-        //karp hash
-        if (itr->second.size() > HIST_SIZE) {
-            for (int i = 0; i < itr->second.size(); i++){
-                get<1>((itr->second)[i]) -= 1;
+            if (flag == 0)
+            { // add this new RI and frequency
+                (itr->second).push_back(make_tuple(RI, 1));
+                //cout << "RI:"<<RI <<" FREQ:"<< 1 << endl;
             }
-            for (int i = 0; i < itr->second.size(); i++){
-                if (get<1>((itr->second)[i]) <= 0) {
-                   (itr->second).erase(i + itr->second.begin());
+
+            //karp hash
+            if (itr->second.size() > HIST_SIZE)
+            {
+                for (int i = 0; i < itr->second.size(); i++)
+                {
+                    get<1>((itr->second)[i]) -= 1;
                 }
+                for (int i = 0; i < itr->second.size(); i++)
+                {
+                    if (get<1>((itr->second)[i]) <= 0)
+                    {
+                        (itr->second).erase(i + itr->second.begin());
+                    }
+                }
+                get<1>((itr->second)[0]) -= itr->second.size() - 1;
             }
+<<<<<<< Updated upstream
             get<1>((itr->second)[0]) -= itr->second.size() - 1;
         }
 
@@ -3667,24 +3683,71 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
             for (int i = 0; i < itr->second.size(); i++){
                 if (get<1>((itr->second)[i]) <= 0){
     	           (itr->second).erase(i + itr->second.begin());
-                }
+=======
+        } // else close
+    } //if read close
+    else {
+        if (RIT_write.find(prev_pc) == RIT_write.end()) { // entry not found
+            vector<tuple<uint64_t, uint64_t>> new_entry;
+            new_entry.push_back(make_tuple(RI, 1));
+
+            RIT_write.insert({prev_pc, new_entry}); // not found new entry
+            RIT_write_idx[pc_idx] = prev_pc;
+        } else {
+            // add to existing entry
+            auto itr = RIT_write.find(prev_pc);
+            int flag = 0; //get vector < tuple <RI, freq> >
+            for (int i = 0; i < ((itr->second)).size(); i++) {
+                // RIT is bucket reuse interval histogram, it sotres RIs in
+                // bucket
+                if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI)
+                            && (RI >= (get<0>((itr->second)[i]) - BUCKET_SIZE)))
+                //if current RI to insert is within BUCKET_SIZE of previous RI's
+                {            // found do
+                    get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
+                    //cout << "RI:"<<get<0>((itr->second)[i]) <<" FREQ:"<<
+                    //get<1>((itr->second)[i]) << endl;
+                    //increment frequency
+                    flag = 1;
+                    break;
+                } //if close
+            }     // for close
+            if (flag == 0)
+            { // add this new RI and frequency
+                (itr->second).push_back(make_tuple(RI, 1));
+                //cout << "RI:"<<RI <<" FREQ:"<< 1 << endl;
             }
-            get<1>((itr->second)[0]) -= itr->second.size() - 1;
-        }
 
-    } // else close
+            //karp hash
+            // keep most frequent HIST_SIZE:  RI in histogram
+            if (itr->second.size() > HIST_SIZE)
+            {
+                for (int i = 0; i < itr->second.size(); i++)
+                {
+                    get<1>((itr->second)[i]) -= 1;
+                }
+                for (int i = 0; i < itr->second.size(); i++)
+                {
+                    if (get<1>((itr->second)[i]) <= 0)
+                    {
+                        (itr->second).erase(i + itr->second.begin());
+                    }
+>>>>>>> Stashed changes
+                }
+                get<1>((itr->second)[0]) -= itr->second.size() - 1;
+            }
 
-
-   }//else write close
+        } // else close
+    }//else write close
 }
 
 
 void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double  expected_distance) {
 
-   if((*index)< MAX_RANKED) {	
-    ranked[(*index)].PFN = PFN;
-    ranked[(*index)].ERD = expected_distance;
-    (*index)++;
+   if((*index)< MAX_RANKED) {
+       ranked[(*index)].PFN = PFN;
+       ranked[(*index)].ERD = expected_distance;
+       (*index)++;
    }
    else {
     //find max ERD and evict it if less than max
@@ -3694,33 +3757,27 @@ void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN,
       //Addr max_PFN = 0;
 
       for (i=0; i< MAX_RANKED ; i++) {
-           
-           if(ranked[i].ERD > max_ERD ) {
-                max_index = i;
-		max_ERD = ranked[i].ERD;
-		//max_PFN = ranked[i].PFN;
-
-	   }
+          if(ranked[i].ERD > max_ERD ) {
+              max_index = i;
+              max_ERD = ranked[i].ERD;
+          }
       }//for close
 
       if( max_ERD > expected_distance) {
            ranked[max_index].PFN = PFN;
-	   ranked[max_index].ERD = expected_distance;
-      } 
-
-  }	   
+           ranked[max_index].ERD = expected_distance;
+      }
+   }
 }
 
 
 void DRAMCtrl::sort_PFN(struct Rank_PFN* ranked, uint64_t index) {
-//Basic bubble sort
+    //Basic bubble sort
     uint64_t i, j;
 
     for ( i=0 ; i<(index-1); i++) {
-
-	  for ( j=0; j < (index-1-i); j++) {
-
-              if (ranked[j].ERD > ranked[j+1].ERD) {
+        for ( j=0; j < (index-1-i); j++) {
+            if (ranked[j].ERD > ranked[j+1].ERD) {
                  Addr temp_PFN = ranked[j].PFN;
                  uint64_t temp_ERD = ranked[j].ERD;
                  ranked[j].PFN = ranked[j+1].PFN;
@@ -3728,24 +3785,18 @@ void DRAMCtrl::sort_PFN(struct Rank_PFN* ranked, uint64_t index) {
                  ranked[j+1].PFN = temp_PFN;
                  ranked[j+1].ERD = temp_ERD;
               }//if close
-
-	 } //for j close	  
-
-    }//for i close	    
-
-
-
-
-}	
+        } //for j close
+    }//for i close 
+}
 
 
 //need to call based on read or write
+// PMD is the page metadata of the currect memory access
 Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
-
     if(!write)
-      index_read_PFN = 0;
+        index_read_PFN = 0;
     else
-      index_write_PFN = 0;
+        index_write_PFN = 0;
 
     Addr max_ERD_PFN;
     uint64_t max_ERD =0 ;
@@ -3756,107 +3807,145 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
     uint64_t i;
     
     for(i=0; i < MAX_PAGE_METADATA; i++) {
-		
-	     Addr PFN = PMD[i].PFN;
-             bool set = PMD[i].set;
-	     if(set) {
-
-		if(USE_METADATA) {
-    				uint64_t index = search_PMD(PMD, PFN);
-      				if(index!= -1) {
-      					 leu_pc = get_PMD_pc(PMD, index);      //get ip for the particular cache block to look up PDT
-           			 	 last_access = get_PMD_la(PMD, index);
-      				         pc_look = true;
-				}	
-      				else {
-     				 	 leu_pc = 0;      //get ip for the particular cache block to look up PDT
-            				 last_access = 0;  
-            				 pc_look = false;
-     				 }	      
-			}// if USE_QUEUE close
-		else{
-		
-		
-		}//else close     
-
-
-           	double expected_distance = 0;
-           	uint64_t tesla, cnt = 0;
-
-	 	if(write) {    
-           		tesla = leu_logical_time_write - last_access;
-         	}
-	 	else { 
-          		tesla = leu_logical_time_read -last_access;		 
-         	}
-
-                if(write) {
-	       		 if (RIT_write.find(leu_pc) != RIT_write.end() && pc_look){
-                     		vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_write[leu_pc]; //get the RI,FREQ vector for this ip
-	                	for (int i = 0; i < RI_FREQ.size(); i++){ //get size of thes vector
-                	    		if (get<0>(RI_FREQ[i]) > tesla) {   //get RI of the tuple
-                       				 auto RI = get<0>(RI_FREQ[i]);     //RI
-                       				 auto RI_cnt = get<1>(RI_FREQ[i]); //freq
-                        		 	 expected_distance += RI * RI_cnt; //calculate expected Reuse
-                       			 	 cnt += RI_cnt;
-                   			 } //if close
-                		} //for close
-              		} //if close
-            	 }//if write close
-		else {
-
-                        if (RIT_read.find(leu_pc) != RIT_read.end() && pc_look){
-               		 	vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_read[leu_pc]; //get the RI,FREQ vector for this ip
-	               		 for (int i = 0; i < RI_FREQ.size(); i++){ //get size of thes vector
-                	    		if (get<0>(RI_FREQ[i]) > tesla){    //get RI of the tuple
-                      			 	 auto RI = get<0>(RI_FREQ[i]);     //RI
-                        			 auto RI_cnt = get<1>(RI_FREQ[i]); //freq
-                       				 expected_distance += RI * RI_cnt; //calculate expected Reuse
-                       				 cnt += RI_cnt;
-                   			 } //if close
-                		}//for close
-
-		          } //if close
-		}//else close	
-  		
-     
-		if (cnt != 0) {
+        Addr PFN = PMD[i].PFN;
+        bool set = PMD[i].set;
+        if(set) 
+        {
+            if(USE_METADATA) 
+            {
+                uint64_t index = search_PMD(PMD, PFN);
+                if(index!= -1) 
+                {
+                    leu_pc = get_PMD_pc(PMD, index);      //get ip for the particular cache block to look up PDT
+                    last_access = get_PMD_la(PMD, index);
+                    pc_look = true;
+                } else {
+                    leu_pc = 0;      //get ip for the particular cache block to look up PDT
+                    last_access = 0;  
+                    pc_look = false;
+                }
+            }// if USE_QUEUE close
+            else{
+            }//else close     
+            double expected_distance = 0;
+            uint64_t tesla, cnt = 0;
+            if(write) {
+                tesla = leu_logical_time_write - last_access;
+            } else {
+                tesla = leu_logical_time_read -last_access;
+            }
+            if(write) {
+                if (RIT_write.find(leu_pc) != RIT_write.end() && pc_look){
+                    vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_write[leu_pc]; //get the RI,FREQ vector for this ip
+                    for (int i = 0; i < RI_FREQ.size(); i++){ //get size of thes vector
+                        if (get<0>(RI_FREQ[i]) > tesla) {   //get RI of the tuple
+                            auto RI = get<0>(RI_FREQ[i]);     //RI
+                            auto RI_cnt = get<1>(RI_FREQ[i]); //freq
+                            expected_distance += RI * RI_cnt; //calculate expected Reuse
+                            cnt += RI_cnt;
+                        } //if close
+                    } //for close
+                } //if close
+            }//if write close
+            else {
+                if (RIT_read.find(leu_pc) != RIT_read.end() && pc_look){
+                    vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_read[leu_pc]; //get the RI,FREQ vector for this ip
+                    for (int i = 0; i < RI_FREQ.size(); i++){ //get size of thes vector
+                        if (get<0>(RI_FREQ[i]) > tesla){    //get RI of the tuple
+                            auto RI = get<0>(RI_FREQ[i]);     //RI
+                            auto RI_cnt = get<1>(RI_FREQ[i]); //freq
+                            expected_distance += RI * RI_cnt; //calculate expected Reuse
+                            cnt += RI_cnt;
+                        } //if close
+                    }//for close
+                } //if close
+            }//else close
+            if (cnt != 0) {
                     expected_distance = (expected_distance / cnt) - tesla;
-		 } else {
-		    expected_distance = tesla;
-                 }
-		  
-		 
-		 
-		 if( expected_distance >= max_ERD ) {
-		      max_ERD_PFN = PFN;
-                      max_ERD = expected_distance;
-		  }
+            } else {
+                expected_distance = tesla;
+            }
+            if( expected_distance >= max_ERD ) {
+                max_ERD_PFN = PFN;
+                max_ERD = expected_distance;
+            }
+            if(!write)
+                insert_ranked(ranked_read_PFNs, &index_read_PFN, PFN, expected_distance);
+            else
+                insert_ranked(ranked_write_PFNs, &index_write_PFN, PFN, expected_distance);
+        }//is set close  
+    }//for close
+            double expected_distance = 0;
+            uint64_t tesla, cnt = 0;
 
-		 if(!write)
-                     insert_ranked(ranked_read_PFNs, &index_read_PFN, PFN, expected_distance); 	
-		  else
-	             insert_ranked(ranked_write_PFNs, &index_write_PFN, PFN, expected_distance);		   
-	     }//is set close  
-       }//for close
-
-   
-     std::cout << "Index read PFN:"<<index_read_PFN<<std::endl;
-     std::cout << "Max ERD:"<<std::hex<< max_ERD <<"  Max PFN:"<<std::hex<< max_ERD_PFN <<std::endl;
+            if(write) {
+                tesla = leu_logical_time_write - last_access;
+            }
+            else {
+                tesla = leu_logical_time_read -last_access;
+            }
+            if(write) {
+                 if (RIT_write.find(leu_pc) != RIT_write.end() && pc_look) {
+                     vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_write[leu_pc]; //get the RI,FREQ vector for this ip
+                     for (int i = 0; i < RI_FREQ.size(); i++) { //get size of thes vector
+                         if (get<0>(RI_FREQ[i]) > tesla) {                                    //get RI of the tuple
+                             auto RI = get<0>(RI_FREQ[i]);     //RI
+                             auto RI_cnt = get<1>(RI_FREQ[i]); //freq
+                             expected_distance += RI * RI_cnt; //calculate expected Reuse
+                             cnt += RI_cnt;
+                         } //if close
+                     } //for close
+                 } //if close
+            }//if write close
+            else {
+                if (RIT_read.find(leu_pc) != RIT_read.end() && pc_look) {
+                    vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_read[leu_pc]; //get the RI,FREQ vector for this ip
+                    for (int i = 0; i < RI_FREQ.size(); i++) { //get size of thes vector
+                        if (get<0>(RI_FREQ[i]) > tesla)
+                        {                                     //get RI of the tuple
+                            auto RI = get<0>(RI_FREQ[i]);     //RI
+                            auto RI_cnt = get<1>(RI_FREQ[i]); //freq
+                            expected_distance += RI * RI_cnt; //calculate expected Reuse
+                            cnt += RI_cnt;
+                        } //if close
+                    }//for close
+                } //if close
+            }//else close
+            // compute the expected_distance for each entry of LEU table for
+            // specific PC
+            if (cnt != 0) {
+                expected_distance = (expected_distance / cnt) - tesla;
+            } else {
+                expected_distance = tesla;
+            }
+            // log the PFN with max expected distance
+            if( expected_distance >= max_ERD ) {
+                max_ERD_PFN = PFN;
+                max_ERD = expected_distance;
+            }
+            if(!write)
+                insert_ranked(ranked_read_PFNs, &index_read_PFN, PFN, expected_distance);
+            else
+                insert_ranked(ranked_write_PFNs, &index_write_PFN, PFN, expected_distance);
+        }//is set close  
+    }//for close
+    std::cout << "Index read PFN:"<<index_read_PFN<<std::endl;
+    std::cout << "Max ERD:"<<std::hex<< max_ERD <<"  Max PFN:"<<std::hex<< max_ERD_PFN <<std::endl;
     //Sorting perfomed in insert itself, by keeping the ones with the mininum ERD, evicting max ERD PFN upon saturation
 
     // if(!write) {
-          
     // sort_PFN(ranked_read_PFNs, index_read_PFN);
     // max_ERD_PFN = ranked_read_PFNs[index_read_PFN-1].PFN;
     // }
     // else {
-         
     // sort_PFN(ranked_write_PFNs, index_write_PFN);
     // max_ERD_PFN = ranked_write_PFNs[index_write_PFN-1].PFN;
-    // }     
+    // }
+    return max_ERD_PFN;
+}
 
-    
-
-     return max_ERD_PFN;
-}	
+// check whether passing in address is in NVM or DRAM
+// should check the PFN
+bool in_nvm(Addr addr) {
+    return false;
+}

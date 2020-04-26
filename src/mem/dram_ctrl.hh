@@ -1073,6 +1073,10 @@ class DRAMCtrl : public QoS::MemCtrl
     uint32_t writesThisTime;
     uint32_t readsThisTime;
 
+    uint64_t total_dram_write = 0;
+    uint64_t total_dram_read = 0;
+    uint64_t total_nvm_write = 0;
+    uint64_t total_nvm_read = 0;
     /**
      * Basic memory timing parameters initialized based on parameter
      * values.
