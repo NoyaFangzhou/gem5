@@ -73,7 +73,7 @@
 #include "params/DRAMCtrl.hh"
 #include "sim/eventq.hh"
 
-//#define DRAM_NVM_LEU
+//#define DRAM_NVM_LEU/
 //#define DRAM_NVM
 #define MAX_PAGE_METADATA (numPages)
 #define MAX_RANKED (numPages >> 2)

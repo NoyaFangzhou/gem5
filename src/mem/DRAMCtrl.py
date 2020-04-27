@@ -156,7 +156,7 @@ class DRAMCtrl(QoSMemCtrl):
     # the amount of time in nanoseconds from issuing an activate command
     # to the data being available in the row buffer for a read/write
     tRCD = Param.Latency("RAS to CAS delay")
-    #tRCD_nvm = Param.Latency("RAS to CAS delay")
+   # tRCD_nvm = Param.Latency("RAS to CAS delay")
 
     # the time from issuing a read/write command to seeing the actual data
     tCL = Param.Latency("CAS latency")
@@ -583,7 +583,7 @@ class DDR_NVM_256MB_8x2x16(DRAMCtrl):
 
 class DDR_1600_8x8_256MB(DRAMCtrl):
     # size of device in bytes
-    device_size = '32MB' 
+    device_size = '16MB' 
 
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8
@@ -598,7 +598,7 @@ class DDR_1600_8x8_256MB(DRAMCtrl):
     devices_per_rank = 8
 
     # Use two ranks
-    ranks_per_channel = 1
+    ranks_per_channel = 2
 
     # DDR3 has 8 banks in all configurations
     banks_per_rank = 8
@@ -619,7 +619,7 @@ class DDR_1600_8x8_256MB(DRAMCtrl):
     activation_limit = 4
     tRFC = '260ns'
 
-    tWR = '30ns'
+    tWR = '15ns'
 
     # Greater of 4 CK or 7.5 ns
     tWTR = '7.5ns'
@@ -695,7 +695,7 @@ class DDR_1600_8x8_4GB(DRAMCtrl):
     activation_limit = 4
     tRFC = '260ns'
 
-    tWR = '30ns'
+    tWR = '15ns'
 
     # Greater of 4 CK or 7.5 ns
     tWTR = '7.5ns'
@@ -771,7 +771,7 @@ class DDR_1600_8x8_2GB(DRAMCtrl):
     activation_limit = 4
     tRFC = '260ns'
 
-    tWR = '30ns'
+    tWR = '15ns'
 
     # Greater of 4 CK or 7.5 ns
     tWTR = '7.5ns'
