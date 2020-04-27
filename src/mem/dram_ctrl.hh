@@ -75,8 +75,8 @@
 
 #define DRAM_NVM_LEU
 //#define DRAM_NVM
-#define MAX_PAGE_METADATA (1024*1024)
-#define MAX_RANKED (1024*256)
+#define MAX_PAGE_METADATA (numPages)
+#define MAX_RANKED (numPages >> 2)
 #define USE_STRUCT true
 #define RIT_SIZE 256
 #define LATT_SIZE 64
@@ -85,7 +85,6 @@
 #define USE_METADATA true
 #define  SWAP_TRIGGER_THRESHOLD_READ 2000
 #define  SWAP_TRIGGER_THRESHOLD_WRITE 1000
-    
 /**
  * The DRAM controller is a single-channel memory controller capturing
  * the most important timing constraints associated with a
@@ -940,6 +939,7 @@ class DRAMCtrl : public QoS::MemCtrl
      * Page access frequency
      */
     std::unordered_map<Addr, std::tuple<uint32_t, Addr> > pageFreq;
+    std::unordered_set<Addr> isInDRAM;
 
     /*LEU structures*/
     std::unordered_map<Addr, std::vector<
@@ -966,31 +966,31 @@ class DRAMCtrl : public QoS::MemCtrl
     std::unordered_map<uint32_t, Addr> RIT_read_idx;
 
 
-
-  struct Page_metadata {
-       Addr pc;
-       Addr PFN;
-       uint64_t la;
-       bool set;
-       int lru;
+    uint64_t numPages;
+    struct Page_metadata {
+        Addr pc;
+        Addr PFN;
+        uint64_t la;
+        bool set;
+        int lru;
     };
-    struct Page_metadata PMD_write[MAX_PAGE_METADATA];
-    struct Page_metadata PMD_read[MAX_PAGE_METADATA];
-   //uint64_t index_PMD_write;
-   //uint64_t index_PMD_read;
-    
-  struct Rank_PFN {
-      Addr PFN;
-      uint64_t ERD;
-   };
+    struct Page_metadata *PMD_write;
+    struct Page_metadata *PMD_read;
+    //uint64_t index_PMD_write;
+    //uint64_t index_PMD_read;
 
-  struct Rank_PFN ranked_read_PFNs[MAX_RANKED];
-  uint64_t index_read_PFN;
-  struct Rank_PFN ranked_write_PFNs[MAX_RANKED];
-  uint64_t index_write_PFN;
+    struct Rank_PFN {
+        Addr PFN;
+        uint64_t ERD;
+    };
 
-  void insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double expected_distance);
-  void sort_PFN(struct Rank_PFN* ranked, uint64_t index);
+    struct Rank_PFN *ranked_read_PFNs;
+    uint64_t index_read_PFN;
+    struct Rank_PFN *ranked_write_PFNs;
+    uint64_t index_write_PFN;
+
+    void insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double expected_distance);
+    void sort_PFN(struct Rank_PFN* ranked, uint64_t index);
 
     uint64_t index_PMD_write;
     uint64_t index_PMD_read;
@@ -1006,17 +1006,15 @@ class DRAMCtrl : public QoS::MemCtrl
 
     uint64_t leu_logical_time_write;
     uint64_t leu_logical_time_read;
-   
- 
-    bool leu_victim_flag; 
+    bool leu_victim_flag;
     uint32_t hash_func(uint64_t num);
     uint8_t hash_func8(uint64_t num);
 
     void leu_update(Addr PFN, Addr pc,
     bool write, bool hit, double sampling_rate, uint64_t clock_time);
     Addr leu_victim(struct Page_metadata* PMD, bool write);
-   
     bool in_nvm(Addr addr);
+    bool migrate(struct Rank_PFN *rank);
 
     /////////////////////////
 

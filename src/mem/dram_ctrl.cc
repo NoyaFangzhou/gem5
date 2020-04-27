@@ -194,6 +194,21 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
         }
     }
 
+    numPages = capacity / 1024 / 4;
+    std::cout << "Total number of pages: " << numPages << std::endl;
+#if defined(DRAM_NVM_LEU)
+    // Boundary between nvm and dram
+    for (uint64_t i = 0; i < MAX_RANKED; i++)
+        isInDRAM.insert(i);
+#endif
+    PMD_write = (struct Page_metadata*)
+        malloc(numPages * sizeof(struct Page_metadata));
+    PMD_read = (struct Page_metadata*)
+        malloc(numPages * sizeof(struct Page_metadata));
+    ranked_read_PFNs = (struct Rank_PFN*)
+        malloc((numPages << 2) * sizeof(struct Page_metadata));
+    ranked_write_PFNs = (struct Rank_PFN*)
+        malloc((numPages << 2) * sizeof(struct Page_metadata));
 
     // Register callback to dump page access count
     Callback* cb = new MakeCallback<DRAMCtrl,
@@ -221,9 +236,8 @@ DRAMCtrl::init()
     total_dram_read = 0;
     total_nvm_write = 0;
     total_nvm_read = 0;
-
-    uint64_t lru_index = 0;
-    for(lru_index = 0 ; lru_index < MAX_PAGE_METADATA ; lru_index++) {
+    uint64_t lru_index =0;
+    for (lru_index =0 ; lru_index < MAX_PAGE_METADATA ; lru_index++) {
         PMD_write[lru_index].lru =lru_index;
         PMD_read[lru_index].lru =lru_index;
         PMD_write[lru_index].set = false;
@@ -231,8 +245,7 @@ DRAMCtrl::init()
     }
     std::cout<<"LEU STRUCTURES INIT COMPLETE!!"<<std::endl;
     //struct Page_metadata PMD_write[MAX_PAGE_METADATA];
-
-   if (!port.isConnected()) {
+    if (!port.isConnected()) {
         fatal("DRAMCtrl %s is unconnected!\n", name());
     } else {
         port.sendRangeChange();
@@ -299,13 +312,50 @@ DRAMCtrl::startup()
     }
 }
 
-bool 
+bool
 DRAMCtrl::in_nvm(Addr addr) {
 
 
-	//Add logic to look you Intermmediate page table to check whether
-	//address is mapped to NVM region (true) or DRAM region (false)
-	return true;
+    //Add logic to look you Intermmediate page table to check whether
+    //address is mapped to NVM region (true) or DRAM region (false)
+    return isInDRAM.find(addr << 12) == isInDRAM.end();
+}
+
+bool
+DRAMCtrl::migrate(struct Rank_PFN *rank) {
+    std::unordered_set<Addr> tmp = isInDRAM;
+    unsigned count = 0;
+    // std::cout << "======= Before ======= " << std::endl;
+    // for (unordered_set<Addr> :: iterator it = isInDRAM.begin();
+    //      it != isInDRAM.end(); it++)
+    //     std::cout << *it << " ";
+    // std::cout << std::endl;
+
+    isInDRAM.clear();
+    for (unsigned i = 0; i < MAX_RANKED; i++) {
+        if (tmp.find(rank[i].PFN) != tmp.end())
+            // Taget page is already in DRAM
+            continue;
+        else if (tmp.find(rank[i].PFN) == tmp.end()) {
+            count++;
+            // std::cout << rank[i].PFN << std::endl;
+        }
+        isInDRAM.insert(rank[i].PFN);
+    }
+
+    for (unordered_set<Addr> :: iterator it = tmp.begin();
+         it != tmp.end() && isInDRAM.size() < MAX_RANKED; it++)
+        isInDRAM.insert(*it);
+
+
+    // std::cout << "======= After ======= "<< std::endl;
+    // for (unordered_set<Addr> :: iterator it = isInDRAM.begin();
+    //      it != isInDRAM.end(); it++)
+    //     std::cout << *it << " ";
+    // std::cout << std::endl;
+
+    std::cout << count << " pages are remapped." << std::endl;
+    return true;
 }
 
 Tick
@@ -472,6 +522,8 @@ DRAMCtrl::printPageFreq(void)
     std::cout << "Total NVM Read: " << total_nvm_read << std::endl;
     std::cout << "Total NVM Write: " << total_nvm_write << std::endl;
     std::cout << "Total NVM Access: " << total_nvm_read + total_nvm_write << std::endl;
+    std::cout << "Memory usage: " << std::dec << pageFreq.size()
+              << " pages" << std::endl;
 }
 
 void 
@@ -499,35 +551,37 @@ DRAMCtrl::printLEUStructs(void)
          }
         std::cout << std::endl;
     } //for close
-
     std::cout << std::endl;
     std::cout << "========= LATT =========" << std::endl;
     std::cout << "----- LATT write ---------" << std::endl;
     for (auto x : LATT_write)
-        std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" 
-            << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
+        std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:"
+                  << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
     std::cout << std::endl;;
 
     std::cout << "----- LATT read ---------" << std::endl;
     for (auto x : LATT_read)
-        std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:"  
-            << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
-    std::cout << std::endl;; 
+        std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:"
+                  << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
+    std::cout << std::endl;;
+
 
     std::cout << "=============PMD read============" << std::endl;
     for (uint64_t i=0 ; i<MAX_PAGE_METADATA; i++) {
-        if(PMD_read[i].set)
-            std::cout << std::hex << "PFN:"<<PMD_read[i].PFN  << " PC:" 
-                << std::hex <<PMD_read[i].pc <<" LAT:"<<std::hex<< PMD_read[i].la << std::endl;
+        if (PMD_read[i].set)
+            std::cout << std::hex << "PFN:"<<PMD_read[i].PFN  << " PC:"
+                      << std::hex << PMD_read[i].pc <<" LAT:"<< std::hex
+                      << PMD_read[i].la << std::endl;
 
     }
     std::cout<<std::endl;
 
     std::cout << "=============PMD write============" << std::endl;
     for (uint64_t i=0 ; i<MAX_PAGE_METADATA; i++) {
-        if(PMD_write[i].set)
+        if (PMD_write[i].set)
             std::cout << std::hex << "PFN:"<<PMD_write[i].PFN  << " PC:"
-                << std::hex <<PMD_write[i].pc <<" LAT:"<<std::hex<< PMD_write[i].la << std::endl;
+                      << std::hex << PMD_write[i].pc << " LAT:" << std::hex
+                      << PMD_write[i].la << std::endl;
     }
     std::cout<<std::endl;
 
@@ -535,15 +589,15 @@ DRAMCtrl::printLEUStructs(void)
     std::cout << "----- ranked_read_PFN ---------" << std::endl;
     std::cout << "LEU victim flag:"<< leu_victim_flag << std::endl;
     for (uint64_t i=0 ; i<index_read_PFN; i++) {
-        std::cout << std::hex << "PFN:"<<ranked_read_PFNs[i].PFN << " ERD:"<<ranked_read_PFNs[i].ERD << std::endl;
+        std::cout << std::hex << "PFN:"<<ranked_read_PFNs[i].PFN
+                  << " ERD:"<<ranked_read_PFNs[i].ERD << std::endl;
     }
 
     std::cout << "----- ranked_write_PFN ---------" << std::endl;
     std::cout << "LEU victim flag:"<< leu_victim_flag << std::endl;
     for (uint64_t i=0 ; i<index_write_PFN; i++) {
-        std::cout << std::hex << "PFN:"<<ranked_write_PFNs[i].PFN  << 
-        " ERD:"<<ranked_write_PFNs[i].ERD << std::endl;
-
+        std::cout << std::hex << "PFN:"<<ranked_write_PFNs[i].PFN  <<
+            " ERD:"<<ranked_write_PFNs[i].ERD << std::endl;
     }
 }
 
@@ -590,12 +644,18 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     Addr PFN_max_ERD;
     if(leu_logical_time_read % SWAP_TRIGGER_THRESHOLD_READ == 0) {
        PFN_max_ERD = leu_victim(PMD_read, false);
-       //use Rank_PFN ranked_read_PFN for updating intermediate TLB and add swap page overhead
-       //ranked_read_PFN contains the 25% of the top pages based on minimum expected reuse distance
-       //iterate until index_read_PFN and read PFN as ranked_read_PFN[i].PFN to get page frame number, ranked_read_PFN[i].ERD to get ERD
-       //remember they are not sorted in the structure based on ERD relative to index
-       //use Rank_PFN ranked_read_PFN
+       /* use Rank_PFN ranked_read_PFN for updating intermediate TLB and add
+          swap page overhead
+          ranked_read_PFN contains the 25% of the top pages based on minimum
+          expected reuse distance
+          iterate until index_read_PFN and read PFN as ranked_read_PFN[i].PFN
+          to get page frame number, ranked_read_PFN[i].ERD to get ERD
+          remember they are not sorted in the structure based on ERD relative
+          to index
+          use Rank_PFN ranked_read_PFN
+       */
        std::cout << "addToReadQueue Max ERD PFN:"<<PFN_max_ERD << std::endl;
+       migrate(ranked_read_PFNs);
     }
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
@@ -703,7 +763,8 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
 
     updatePageFreq(addr, pkt->getPC());
     bool hit = true;
-    leu_update(addr >> 12, pkt->getPC() , true , hit, 1.0, leu_logical_time_write);
+    leu_update(addr >> 12, pkt->getPC() , true , hit, 1.0,
+               leu_logical_time_write);
 
    // if (pkt->isValidPC()) {
     //  std::cout << "Access from pc addToWriteQueue: " <<
@@ -711,15 +772,19 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
     //          << leu_logical_time_write << std::endl;
     // }
     Addr PFN_max_ERD;
-    if(leu_logical_time_write % SWAP_TRIGGER_THRESHOLD_WRITE == 0) {
+    if (leu_logical_time_write % SWAP_TRIGGER_THRESHOLD_WRITE == 0) {
         PFN_max_ERD = leu_victim(PMD_write, true);
-       //use Rank_PFN ranked_write_PFN for updating intermediate TLB and add swap page overhead
-       //ranked_write_PFN contains the 25% of the top pages based on minimum expected reuse distance
-       //iterate until index_write_PFN and read PFN as ranked_write_PFN[i].PFN to get page frame number, ranked_write_PFN[i].ERD to get ERD
-       //remember they are not sorted in the structure based on ERD relative to index
+        /* use Rank_PFN ranked_write_PFN for updating intermediate TLB and
+           add swap page overhead
+           ranked_write_PFN contains the 25% of the top pages based on minimum
+           expected reuse distance
+           iterate until index_write_PFN and read PFN as ranked_write_PFN[i].PFN
+           to get page frame number, ranked_write_PFN[i].ERD to get ERD
+           remember they are not sorted in the structure based on ERD relative
+           to index
+       */
         std::cout <<"addToWriteQueue  Max ERD PFN:"<< PFN_max_ERD << std::endl;
     }
-    
     if (in_nvm(base_addr)) {
         total_nvm_write += 1;
     } else {
@@ -1192,56 +1257,54 @@ DRAMCtrl::activateBank(Rank& rank_ref, Bank& bank_ref,
 
     // The next access has to respect tRAS for this bank
 
- // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated 
-
- 
- #ifdef DRAM_NVM_LEU
-        if (in_dram) 
-           bank_ref.preAllowedAt = act_tick + tRAS;
-        else
-           bank_ref.preAllowedAt = act_tick + tRAS_nvm;
- #else
-     #ifdef DRAM_NVM
-    	if (in_dram)
-    	   bank_ref.preAllowedAt = act_tick + tRAS;
-   	else
-    	   bank_ref.preAllowedAt = act_tick + tRAS_nvm;
-     #else
-    	bank_ref.preAllowedAt = act_tick + tRAS;
-     #endif
- #endif	
+    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+    //  latency should be updated
 
 
-// TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated 
+#ifdef DRAM_NVM_LEU
+    if (in_dram)
+        bank_ref.preAllowedAt = act_tick + tRAS;
+    else
+        bank_ref.preAllowedAt = act_tick + tRAS_nvm;
+#else
+#ifdef DRAM_NVM
+    if (in_dram)
+        bank_ref.preAllowedAt = act_tick + tRAS;
+    else
+        bank_ref.preAllowedAt = act_tick + tRAS_nvm;
+#else
+    bank_ref.preAllowedAt = act_tick + tRAS;
+#endif
+#endif
+    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+    // latency should be updated
 
- #ifdef DRAM_NVM_LEU
- 	if (in_dram) {
-          // Respect the row-to-column command delay for both read and write cmds
-    		bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
-    		bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
-	}
-	else {
-         	bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
-    		bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
-	}
- #else
-     #ifdef DRAM_NVM
- 	if (in_dram) {
-    // Respect the row-to-column command delay for both read and write cmds
-    		bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
-    		bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
-   	}
-   	else {
-    		bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
-    		bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
-  	 }
-     #else
-   		bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
-   		bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
-     #endif
- #endif		
+#ifdef DRAM_NVM_LEU
+    if (in_dram) {
+        // Respect the row-to-column command delay for both read and write cmds
+        bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
+        bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
+    }
+    else {
+        bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
+        bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
+    }
+#else
+#ifdef DRAM_NVM
+    if (in_dram) {
+        // Respect the row-to-column command delay for both read and write cmds
+        bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
+        bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
+    }
+    else {
+        bank_ref.rdAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.rdAllowedAt);
+        bank_ref.wrAllowedAt = std::max(act_tick + tRCD_nvm, bank_ref.wrAllowedAt);
+    }
+#else
+    bank_ref.rdAllowedAt = std::max(act_tick + tRCD, bank_ref.rdAllowedAt);
+    bank_ref.wrAllowedAt = std::max(act_tick + tRCD, bank_ref.wrAllowedAt);
+#endif
+#endif
 
     // start by enforcing tRRD
     for (int i = 0; i < banksPerRank; i++) {
@@ -1323,23 +1386,23 @@ DRAMCtrl::prechargeBank(Rank& rank_ref, Bank& bank, Tick pre_at, bool trace)
 
     Tick pre_done_at;
 // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated 
+        //  latency should be updated
 
  #ifdef DRAM_NVM_LEU
-        if (bank.bank%4 == 0) 
+        if (bank.bank%4 == 0)
            pre_done_at = pre_at + tRP;
         else
            pre_done_at = pre_at + tRP_nvm;
  #else
     #ifdef DRAM_NVM
-    	if (bank.bank %4 == 0)
-    	   pre_done_at = pre_at + tRP;
-    	else
-    	   pre_done_at = pre_at + tRP_nvm;
+        if (bank.bank %4 == 0)
+            pre_done_at = pre_at + tRP;
+        else
+            pre_done_at = pre_at + tRP_nvm;
     #else
-    	pre_done_at = pre_at + tRP;
+        pre_done_at = pre_at + tRP;
    #endif
-#endif 	
+#endif
     bank.actAllowedAt = std::max(bank.actAllowedAt, pre_done_at);
 
     assert(rank_ref.numBanksActive != 0);
@@ -1413,25 +1476,25 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
         // constraints caused be a new activation (tRRD and tXAW)
 
 // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated 
+        //  latency should be updated
 
- 
+
  #ifdef DRAM_NVM_LEU
         if (!in_nvm(dram_pkt->addr))
-      	   activateBank(rank, bank, act_tick, dram_pkt->row, true);
+            activateBank(rank, bank, act_tick, dram_pkt->row, true);
         else
-           activateBank(rank, bank, act_tick, dram_pkt->row, false);
+            activateBank(rank, bank, act_tick, dram_pkt->row, false);
  #else
-       #ifdef DRAM_NVM
+#ifdef DRAM_NVM
         if (dram_pkt->addr < 0x40000000) {
            activateBank(rank, bank, act_tick, dram_pkt->row, true);
         }
         else
            activateBank(rank, bank, act_tick, dram_pkt->row, false);
-	#else
+#else
         activateBank(rank, bank, act_tick, dram_pkt->row, true);
- 	#endif
- #endif	
+#endif
+#endif
 
     }
 
@@ -1442,27 +1505,26 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // we need to wait until the bus is available before we can issue
     // the command; need minimum of tBURST between commands
     Tick cmd_at = std::max({col_allowed_at, nextBurstAt, curTick()});
+    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+    // latency should be updated
 
- // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated 
 
- 
- #ifdef DRAM_NVM_LEU
-     if (!in_nvm(dram_pkt->addr))
+#ifdef DRAM_NVM_LEU
+    if (!in_nvm(dram_pkt->addr))
         dram_pkt->readyTime = cmd_at + tCL + tBURST;
-     else
+    else
         dram_pkt->readyTime = cmd_at + tCL_nvm + tBURST;
 #else
-    #ifdef DRAM_NVM
+#ifdef DRAM_NVM
     // update the packet ready time
-     if (dram_pkt->addr < 0x40000000) //1 GB
+    if (dram_pkt->addr < 0x40000000) //1 GB
         dram_pkt->readyTime = cmd_at + tCL + tBURST;
-     else
+    else
         dram_pkt->readyTime = cmd_at + tCL_nvm + tBURST;
-    #else
-     dram_pkt->readyTime = cmd_at + tCL + tBURST;
-    #endif
-#endif     
+#else
+    dram_pkt->readyTime = cmd_at + tCL + tBURST;
+#endif
+#endif
     // update the time for the next read/write burst for each
     // bank (add a max with tCCD/tCCD_L/tCCD_L_WR here)
     Tick dly_to_rd_cmd;
@@ -1474,63 +1536,63 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
             // tBURST; Add tCS for different ranks
             if (dram_pkt->rank == j) {
                 if (bankGroupArch &&
-                   (bank.bankgr == ranks[j]->banks[i].bankgr)) {
+                    (bank.bankgr == ranks[j]->banks[i].bankgr)) {
                     // bank group architecture requires longer delays between
                     // RD/WR burst commands to the same bank group.
                     // tCCD_L is default requirement for same BG timing
                     // tCCD_L_WR is required for write-to-write
                     // Need to also take bus turnaround delays into account
                     // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated 
-	
-		 #ifdef DRAM_NVM_LEU
-        		if (!in_nvm(dram_pkt->addr)) {
-			    dly_to_rd_cmd = dram_pkt->isRead() ?
-                                        tCCD_L : std::max(tCCD_L, wrToRdDly);
-                         }
-                       else {
-                            dly_to_rd_cmd = dram_pkt->isRead() ?
-                                    tCCD_L : std::max(tCCD_L, wrToRdDly_nvm);
-                         }
-                 #else
-                   	#ifdef DRAM_NVM
-                        // update the packet ready time
-                      	 if (dram_pkt->addr < 0x40000000)  {
-                            dly_to_rd_cmd = dram_pkt->isRead() ?
-                                        tCCD_L : std::max(tCCD_L, wrToRdDly);
-                         }
-                       	else {
-                            dly_to_rd_cmd = dram_pkt->isRead() ?
-                                    tCCD_L : std::max(tCCD_L, wrToRdDly_nvm);
-                         }
-                 	 #else
-                      	 dly_to_rd_cmd = dram_pkt->isRead() ?
-                                        tCCD_L : std::max(tCCD_L, wrToRdDly);
-                 	 #endif
-		#endif	 
+                    //  latency should be updated
+
+#ifdef DRAM_NVM_LEU
+                    if (!in_nvm(dram_pkt->addr)) {
+                        dly_to_rd_cmd = dram_pkt->isRead() ?
+                            tCCD_L : std::max(tCCD_L, wrToRdDly);
+                    }
+                    else {
+                        dly_to_rd_cmd = dram_pkt->isRead() ?
+                            tCCD_L : std::max(tCCD_L, wrToRdDly_nvm);
+                    }
+#else
+#ifdef DRAM_NVM
+                    // update the packet ready time
+                    if (dram_pkt->addr < 0x40000000)  {
+                        dly_to_rd_cmd = dram_pkt->isRead() ?
+                            tCCD_L : std::max(tCCD_L, wrToRdDly);
+                    }
+                    else {
+                        dly_to_rd_cmd = dram_pkt->isRead() ?
+                            tCCD_L : std::max(tCCD_L, wrToRdDly_nvm);
+                    }
+#else
+                    dly_to_rd_cmd = dram_pkt->isRead() ?
+                        tCCD_L : std::max(tCCD_L, wrToRdDly);
+#endif
+#endif
                     dly_to_wr_cmd = dram_pkt->isRead() ?
-                                    std::max(tCCD_L, rdToWrDly) : tCCD_L_WR;
+                        std::max(tCCD_L, rdToWrDly) : tCCD_L_WR;
                 } else {
                     // tBURST is default requirement for diff BG timing
                     // Need to also take bus turnaround delays into accounti
-		    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-       			 //  latency should be updated
-		#ifdef DRAM_NVM_LEU
-       			 if (!in_nvm(dram_pkt->addr))
-               		    dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
-               		 else
-               		    dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly_nvm;
-                #else
-			#ifdef DRAM_NVM
-                        // update the packet ready time
-               		 if (dram_pkt->addr < 0x40000000) //1 GB
-               		    dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
-               		 else
-               		    dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly_nvm;
-                  	 #else
-                   	 dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
-                	#endif
-		#endif	 
+                    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+                    //  latency should be updated
+#ifdef DRAM_NVM_LEU
+                    if (!in_nvm(dram_pkt->addr))
+                        dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+                    else
+                        dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly_nvm;
+#else
+#ifdef DRAM_NVM
+                    // update the packet ready time
+                    if (dram_pkt->addr < 0x40000000) //1 GB
+                        dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+                    else
+                        dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly_nvm;
+#else
+                    dly_to_rd_cmd = dram_pkt->isRead() ? tBURST : wrToRdDly;
+#endif
+#endif
                     dly_to_wr_cmd = dram_pkt->isRead() ? rdToWrDly : tBURST;
                 }
             } else {
@@ -1541,9 +1603,9 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
                 dly_to_rd_cmd = rankToRankDly;
             }
             ranks[j]->banks[i].rdAllowedAt = std::max(cmd_at + dly_to_rd_cmd,
-                                             ranks[j]->banks[i].rdAllowedAt);
+                                                      ranks[j]->banks[i].rdAllowedAt);
             ranks[j]->banks[i].wrAllowedAt = std::max(cmd_at + dly_to_wr_cmd,
-                                             ranks[j]->banks[i].wrAllowedAt);
+                                                      ranks[j]->banks[i].wrAllowedAt);
         }
     }
 
@@ -1554,40 +1616,38 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // time before a precharge, in the case of a read, respect the
     // read to precharge constraint
     // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated
+    //  latency should be updated
+#ifdef DRAM_NVM_LEU
+    if (!in_nvm(dram_pkt->addr)){
+        bank.preAllowedAt = std::max(bank.preAllowedAt,
+                                     dram_pkt->isRead() ? cmd_at + tRTP :
+                                     dram_pkt->readyTime + tWR);
+    }
+    else {
+        bank.preAllowedAt = std::max(bank.preAllowedAt,
+                                     dram_pkt->isRead() ? cmd_at + tRTP :
+                                     dram_pkt->readyTime + tWR_nvm);
 
+    }
+#else
+#ifdef DRAM_NVM
+    if (dram_pkt->addr < 0x40000000)  {
+        bank.preAllowedAt = std::max(bank.preAllowedAt,
+                                     dram_pkt->isRead() ? cmd_at + tRTP :
+                                     dram_pkt->readyTime + tWR);
+    }
+    else {
+        bank.preAllowedAt = std::max(bank.preAllowedAt,
+                                     dram_pkt->isRead() ? cmd_at + tRTP :
+                                     dram_pkt->readyTime + tWR_nvm);
 
-  #ifdef DRAM_NVM_LEU
-        if (!in_nvm(dram_pkt->addr)){
-	       bank.preAllowedAt = std::max(bank.preAllowedAt,
+    }
+#else
+    bank.preAllowedAt = std::max(bank.preAllowedAt,
                                  dram_pkt->isRead() ? cmd_at + tRTP :
                                  dram_pkt->readyTime + tWR);
-        }
-        else {
-               bank.preAllowedAt = std::max(bank.preAllowedAt,
-                                 dram_pkt->isRead() ? cmd_at + tRTP :
-                                 dram_pkt->readyTime + tWR_nvm);
-
-        }
-  #else
-      #ifdef DRAM_NVM
-        if (dram_pkt->addr < 0x40000000)  {
-               bank.preAllowedAt = std::max(bank.preAllowedAt,
-                                 dram_pkt->isRead() ? cmd_at + tRTP :
-                                 dram_pkt->readyTime + tWR);
-        }
-        else {
-               bank.preAllowedAt = std::max(bank.preAllowedAt,
-                                 dram_pkt->isRead() ? cmd_at + tRTP :
-                                 dram_pkt->readyTime + tWR_nvm);
-
-        }
-      #else
-         bank.preAllowedAt = std::max(bank.preAllowedAt,
-                                 dram_pkt->isRead() ? cmd_at + tRTP :
-                                 dram_pkt->readyTime + tWR);
-      #endif
- #endif	 
+#endif
+#endif
 
     // increment the bytes accessed and the accesses per row
     bank.bytesAccessed += burstSize;
@@ -1684,24 +1744,24 @@ DRAMCtrl::doDRAMAccess(DRAMPacket* dram_pkt)
     // request to not introduce any unecessary bubbles. In most cases
     // we will wake up sooner than we have to.
     // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated 
+    // latency should be updated
 
- 
+
  #ifdef DRAM_NVM_LEU
           if (!in_nvm(dram_pkt->addr))
-         	 nextReqTime = nextBurstAt - (tRP + tRCD);
-             else
-            	 nextReqTime = nextBurstAt - (tRP_nvm + tRCD_nvm);
- #else	
-  	#ifdef DRAM_NVM
+              nextReqTime = nextBurstAt - (tRP + tRCD);
+          else
+              nextReqTime = nextBurstAt - (tRP_nvm + tRCD_nvm);
+#else
+#ifdef DRAM_NVM
              if (dram_pkt->addr < 0x40000000) //1 GB
                  nextReqTime = nextBurstAt - (tRP + tRCD);
              else
                  nextReqTime = nextBurstAt - (tRP_nvm + tRCD_nvm);
- 	#else
+#else
             nextReqTime = nextBurstAt - (tRP + tRCD);
-	#endif
- #endif	    
+#endif
+#endif
 
     // Update the stats and schedule the next request
     if (dram_pkt->isRead()) {
@@ -2080,13 +2140,13 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
                 // an activate, ignoring any rank-to-rank switching
                 // cost in this calculation
                 Tick act_at;
-	// TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
-        //  latency should be updated 
+    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
+    //  latency should be updated
 
- 
+
  #ifdef DRAM_NVM_LEU
         if (bank_id % 4 == 0){
- 		act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
+            act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
                     std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
                     std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
 
@@ -2097,9 +2157,8 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
                     std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP_nvm;
 
         }
- #else
- 
-	#ifdef DRAM_NVM
+#else
+#ifdef DRAM_NVM
                 if (bank_id % 4 == 0) {
                     act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
                       std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
@@ -2112,12 +2171,12 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
                        std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP_nvm;
 
                 }
-	#else
+#else
                 act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
                     std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
                     std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
-	#endif
- #endif		
+#endif
+#endif
                 // When is the earliest the R/W burst can issue?
                 const Tick col_allowed_at = (busState == READ) ?
                                               ranks[i]->banks[j].rdAllowedAt :
@@ -2127,26 +2186,24 @@ DRAMCtrl::minBankPrep(const DRAMPacketQueue& queue,
             Tick col_at;
 	    // TODO: Need to change this for LEU, based on bit set whether the page is mapped in DRAM vs NVM,
         //  latency should be updated
-	
-
-	 #ifdef DRAM_NVM_LEU
-        	if (bank_id % 4 == 0) 
-                    col_at = std::max(col_allowed_at, act_at + tRCD);
-                else
-                    col_at = std::max(col_allowed_at, act_at + tRCD_nvm);
-        #else
-             #ifdef DRAM_NVM
-                if (bank_id % 4 == 0) 
-              	    col_at = std::max(col_allowed_at, act_at + tRCD);
-                 else
-              	    col_at = std::max(col_allowed_at, act_at + tRCD_nvm);
-             #else
-              	col_at = std::max(col_allowed_at, act_at + tRCD);
-             #endif
-	#endif	
-              // bank can issue burst back-to-back (seamlessly) with
-                // previous burst
-                bool new_seamless_bank = col_at <= min_col_at;
+#ifdef DRAM_NVM_LEU
+            if (bank_id % 4 == 0)
+                col_at = std::max(col_allowed_at, act_at + tRCD);
+            else
+                col_at = std::max(col_allowed_at, act_at + tRCD_nvm);
+#else
+#ifdef DRAM_NVM
+            if (bank_id % 4 == 0)
+                col_at = std::max(col_allowed_at, act_at + tRCD);
+            else
+                col_at = std::max(col_allowed_at, act_at + tRCD_nvm);
+#else
+            col_at = std::max(col_allowed_at, act_at + tRCD);
+#endif
+#endif
+            // bank can issue burst back-to-back (seamlessly) with
+            // // previous burst
+            bool new_seamless_bank = col_at <= min_col_at;
 
                 // if we found a new seamless bank or we have no
                 // seamless banks, and got a bank with an earlier
@@ -3337,11 +3394,15 @@ void DRAMCtrl::PMD_lru_update(struct Page_metadata* PMD, uint64_t index)
 uint32_t DRAMCtrl::PMD_lru_victim(struct Page_metadata* PMD)
 {
        uint64_t index=0;
-       for (index = 0; index < MAX_PAGE_METADATA; index++)
-       {
-           if (PMD[index].lru == MAX_PAGE_METADATA - 1) {  break; }
-       }
-       return index;
+        for (index = 0; index < MAX_PAGE_METADATA; index++)
+        {
+            if (PMD[index].lru == MAX_PAGE_METADATA - 1)
+            {  break;
+            }
+        }
+
+
+     return index;
 }
 
 // insert/update PMD table
@@ -3352,18 +3413,20 @@ uint32_t DRAMCtrl::PMD_lru_victim(struct Page_metadata* PMD)
 void DRAMCtrl::insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr pc, uint64_t la){
 
         uint64_t index = search_PMD(PMD, PFN);
+
         if (index != -1) { //found
+
            PMD[index].pc = pc;
            PMD[index].la = la;
            PMD_lru_update(PMD, index);
-           return;
+          return;
         }//if close
         else {
            int victim = PMD_lru_victim(PMD);
            PMD[victim].pc = pc;
            PMD[victim].la = la;
            PMD[victim].PFN = PFN;
-           PMD[victim].set = true;      
+           PMD[victim].set = true;
         }//else close
 }//function close
 
@@ -3693,7 +3756,6 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
     }//else write close
 }
 
-
 void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double  expected_distance) {
    if((*index)< MAX_RANKED) {
        ranked[(*index)].PFN = PFN;
@@ -3843,11 +3905,5 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
     // sort_PFN(ranked_write_PFNs, index_write_PFN);
     // max_ERD_PFN = ranked_write_PFNs[index_write_PFN-1].PFN;
     // }
-    return max_ERD_PFN;
-}
-
-// check whether passing in address is in NVM or DRAM
-// should check the PFN
-bool in_nvm(Addr addr) {
-    return false;
+     return max_ERD_PFN;
 }
