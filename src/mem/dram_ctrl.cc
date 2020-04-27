@@ -3487,12 +3487,8 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         // LATT_read/write is direct-mapped. When there is a mapping conflict
         // LATT_read/write will remove the old one if the old PFN is not equal
         // similar to RIT
-<<<<<<< Updated upstream
-        if (LATT_read_idx.count(PFN_idx) != 0) {
-=======
         if (LATT_read_idx.count(PFN_idx) != 0)
         {
->>>>>>> Stashed changes
             auto old_PFN = LATT_read_idx[PFN_idx];
             if (old_PFN != PFN) {
                 LATT_read.erase(old_PFN);
@@ -3500,12 +3496,8 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         }
     }//if close
     else {
-<<<<<<< Updated upstream
-        if (LATT_write_idx.count(PFN_idx) != 0) {
-=======
         if (LATT_write_idx.count(PFN_idx) != 0)
         {
->>>>>>> Stashed changes
             auto old_PFN = LATT_write_idx[PFN_idx];
             if (old_PFN != PFN) {
                 LATT_write.erase(old_PFN);
@@ -3592,10 +3584,6 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         }
 
     } //else close
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
     if (!write) {
         if (RIT_read.find(prev_pc) == RIT_read.end())
         { // entry not found
@@ -3617,11 +3605,7 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
             {
                 // ordered by RI
                 if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI) &&
-<<<<<<< Updated upstream
-                                (RI >= (get<0>((itr->second)[i]) - BUCKET_SIZE)))
-=======
                                 (RI <= (get<0>((itr->second)[i]) - BUCKET_SIZE)))
->>>>>>> Stashed changes
                     //if current RI to insert is within BUCKET_SIZE of previous RI's
                 {             // found do
                     get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
@@ -3643,7 +3627,6 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
             if (itr->second.size() > HIST_SIZE)
             {
                 for (int i = 0; i < itr->second.size(); i++)
-<<<<<<< Updated upstream
                 {
                     get<1>((itr->second)[i]) -= 1;
                 }
@@ -3654,18 +3637,6 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
                         (itr->second).erase(i + itr->second.begin());
                     }
                 }
-=======
-                {
-                    get<1>((itr->second)[i]) -= 1;
-                }
-                for (int i = 0; i < itr->second.size(); i++)
-                {
-                    if (get<1>((itr->second)[i]) <= 0)
-                    {
-                        (itr->second).erase(i + itr->second.begin());
-                    }
-                }
->>>>>>> Stashed changes
                 get<1>((itr->second)[0]) -= itr->second.size() - 1;
             }
         } // else close
@@ -3701,28 +3672,16 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
                 (itr->second).push_back(make_tuple(RI, 1));
                 //cout << "RI:"<<RI <<" FREQ:"<< 1 << endl;
             }
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
             //karp hash
             // keep most frequent HIST_SIZE:  RI in histogram
             if (itr->second.size() > HIST_SIZE)
             {
                 for (int i = 0; i < itr->second.size(); i++)
-<<<<<<< Updated upstream
                 {
                     get<1>((itr->second)[i]) -= 1;
                 }
                 for (int i = 0; i < itr->second.size(); i++)
                 {
-=======
-                {
-                    get<1>((itr->second)[i]) -= 1;
-                }
-                for (int i = 0; i < itr->second.size(); i++)
-                {
->>>>>>> Stashed changes
                     if (get<1>((itr->second)[i]) <= 0)
                     {
                         (itr->second).erase(i + itr->second.begin());
@@ -3730,32 +3689,18 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
                 }
                 get<1>((itr->second)[0]) -= itr->second.size() - 1;
             }
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
         } // else close
     }//else write close
 }
 
 
 void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double  expected_distance) {
-
-<<<<<<< Updated upstream
-    if ((*index< MAX_RANKED) {
-       ranked[(*index)].PFN = PFN;
-       ranked[(*index)].ERD = expected_distance;
-       (*index)++;
-    }
-    else {
-=======
    if((*index)< MAX_RANKED) {
        ranked[(*index)].PFN = PFN;
        ranked[(*index)].ERD = expected_distance;
        (*index)++;
    }
    else {
->>>>>>> Stashed changes
     //find max ERD and evict it if less than max
       uint64_t i=0;
       uint64_t max_index = 0;
@@ -3772,11 +3717,7 @@ void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN,
            ranked[max_index].PFN = PFN;
            ranked[max_index].ERD = expected_distance;
       }
-<<<<<<< Updated upstream
-    }
-=======
    }
->>>>>>> Stashed changes
 }
 
 
@@ -3803,15 +3744,9 @@ void DRAMCtrl::sort_PFN(struct Rank_PFN* ranked, uint64_t index) {
 // PMD is the page metadata of the currect memory access
 Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
     if(!write)
-<<<<<<< Updated upstream
-        index_read_PFN = 0;
-    else
-        index_write_PFN = 0;
-=======
        index_read_PFN = 0;
     else
        index_write_PFN = 0;
->>>>>>> Stashed changes
 
     Addr max_ERD_PFN;
     uint64_t max_ERD =0 ;
