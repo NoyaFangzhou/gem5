@@ -611,6 +611,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     // only add to the read queue here. whenever the request is
     // eventually done, set the readyTime, and call schedule()
     assert(!pkt->isWrite());
+#ifdef DRAM_NVM_LEU
     leu_logical_time_read++;
     //leu_update(PFN, pc, false, bool hit, 1.0, leu_logical_time_read);
     assert(pktCount != 0);
@@ -619,14 +620,14 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
         if (!migrateQueue.size())
             break;
         auto pfn = migrateQueue[0];
-        std::cout << "Migrate page " << pfn << std::endl;
+        //std::cout << "Migrate page " << pfn << std::endl;
         migrateQueue.pop_front();
         if (isInDRAM.find(pfn) != isInDRAM.end()) {
             isInDRAM[pfn] = true;
             migratePages--;
         }
     }
-
+#endif
     // if the request size is larger than burst size, the pkt is split into
     // multiple DRAM packets
     // Note if the pkt starting address is not aligened to burst size, the
@@ -638,10 +639,12 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     unsigned pktsServicedByWrQ = 0;
     BurstHelper* burst_helper = NULL;
     updatePageFreq(addr, pkt->getPC());
-    bool hit = true;
+    //bool hit = true;
     // once there is an access
     // we update RIT and LATT for this access
     // this 2 tables will be updated for every page access
+#ifdef DRAM_NVM_LEU
+    bool hit = true;
     leu_update(addr >> 12, pkt->getPC() , false, hit, 1.0, leu_logical_time_read);
 
     if (in_nvm(addr)) {
@@ -649,6 +652,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     } else {
         total_dram_read += 1;
     }
+#endif    
     //  if (pkt->isValidPC())
     //  std::cout << "Access from pc addToReadQueue: " <<
     //  std::hex <<  pkt->getPC() <<" Logical time:"<<
@@ -657,6 +661,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     //  When threshold meets
     //  Update the LEU module and evict the one with lowest rank if its tracking
     //  table is full
+#ifdef DRAM_NVM_LEU   
     Addr PFN_max_ERD;
     if(leu_logical_time_read % SWAP_TRIGGER_THRESHOLD_READ == 0) {
        PFN_max_ERD = leu_victim(PMD_read, false);
@@ -673,6 +678,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
        std::cout << "addToReadQueue Max ERD PFN:"<<PFN_max_ERD << std::endl;
        migrate(ranked_read_PFNs);
     }
+#endif    
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,
@@ -773,8 +779,9 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
     assert(pkt->isWrite());
 
     //std::cout << "Add to Write Queue"<< std::endl;
-
+#ifdef DRAM_NVM_LEU
     leu_logical_time_write++;
+#endif    
     // if the request size is larger than burst size, the pkt is split into
     // multiple DRAM packets
     const Addr base_addr = getCtrlAddr(pkt->getAddr());
@@ -790,6 +797,7 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
      //         std::hex <<  pkt->getPC() << " Logical time:"
     //          << leu_logical_time_write << std::endl;
     // }
+  #ifdef DRAM_NVM_LEU 
     Addr PFN_max_ERD;
     if (leu_logical_time_write % SWAP_TRIGGER_THRESHOLD_WRITE == 0) {
         PFN_max_ERD = leu_victim(PMD_write, true);
@@ -809,6 +817,7 @@ DRAMCtrl::addToWriteQueue(PacketPtr pkt, unsigned int pktCount)
     } else {
         total_dram_write += 1;
     }
+#endif
 
     for (int cnt = 0; cnt < pktCount; ++cnt) {
         unsigned size = std::min((addr | (burstSize - 1)) + 1,

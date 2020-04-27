@@ -156,20 +156,20 @@ class DRAMCtrl(QoSMemCtrl):
     # the amount of time in nanoseconds from issuing an activate command
     # to the data being available in the row buffer for a read/write
     tRCD = Param.Latency("RAS to CAS delay")
-    tRCD_nvm = Param.Latency("RAS to CAS delay")
+    #tRCD_nvm = Param.Latency("RAS to CAS delay")
 
     # the time from issuing a read/write command to seeing the actual data
     tCL = Param.Latency("CAS latency")
-    tCL_nvm = Param.Latency("CAS latency")
+    #tCL_nvm = Param.Latency("CAS latency")
     # minimum time between a precharge and subsequent activate
     tRP = Param.Latency("Row precharge time")
-    tRP_nvm = Param.Latency("Row precharge time")
+    #tRP_nvm = Param.Latency("Row precharge time")
     # minimum time between an activate and a precharge to the same row
     tRAS = Param.Latency("ACT to PRE delay")
-    tRAS_nvm = Param.Latency("ACT to PRE delay")
+    #tRAS_nvm = Param.Latency("ACT to PRE delay")
     # minimum time between a write data transfer and a precharge
     tWR = Param.Latency("Write recovery time")
-    tWR_nvm =  Param.Latency("Write recovery time")
+    #tWR_nvm =  Param.Latency("Write recovery time")
     # minimum time between a read and precharge command
     tRTP = Param.Latency("Read to precharge")
 
@@ -531,20 +531,20 @@ class DDR_NVM_256MB_8x2x16(DRAMCtrl):
     # NVM-1600 11-58-80
 
     tRCD = '13.75ns'
-    tRCD_nvm = '72.5ns'
+    #tRCD_nvm = '72.5ns'
     tCL = '13.75ns'
-    tCL_nvm = '13.75ns'
+    #tCL_nvm = '13.75ns'
     tRP = '13.75ns'
-    tRP_nvm = '13.75ns'
+    #tRP_nvm = '13.75ns'
     tRAS = '35ns'
-    tRAS_nvm = '100ns'
+    #tRAS_nvm = '100ns'
     tRRD = '6ns'
     tXAW = '30ns'
     activation_limit = 4
     tRFC = '260ns'
 
     tWR = '15ns'
-    tWR_nvm = '225ns'
+    #tWR_nvm = '225ns'
 
     # Greater of 4 CK or 7.5 ns
     tWTR = '7.5ns'
