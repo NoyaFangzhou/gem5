@@ -159,6 +159,8 @@ MemCtrl::logResponse(BusState dir, MasterID m_id, uint8_t qos,
     if (dir == READ) {
         readQueueSizes[qos] -= entries;
         totalReadQueueSize -= entries;
+        // sz: Add read request finish time
+        finishTime = curTick();
     } else if (dir == WRITE) {
         writeQueueSizes[qos] -= entries;
         totalWriteQueueSize -= entries;

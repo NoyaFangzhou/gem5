@@ -940,7 +940,8 @@ class DRAMCtrl : public QoS::MemCtrl
      * Page access frequency
      */
     std::unordered_map<Addr, std::tuple<uint32_t, Addr> > pageFreq;
-    std::unordered_set<Addr> isInDRAM;
+    std::unordered_map<Addr, bool> isInDRAM;
+    std::deque<Addr> migrateQueue;
 
     /*LEU structures*/
     std::unordered_map<Addr, std::vector<
