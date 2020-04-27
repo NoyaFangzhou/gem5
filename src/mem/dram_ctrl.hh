@@ -78,8 +78,8 @@
 #define MAX_PAGE_METADATA (numPages)
 #define MAX_RANKED (numPages >> 2)
 #define USE_STRUCT true
-#define RIT_SIZE 256
-#define LATT_SIZE 64
+#define RIT_SIZE 2048
+#define LATT_SIZE 1024
 #define HIST_SIZE 7
 #define BUCKET_SIZE 10
 #define USE_METADATA true
@@ -939,7 +939,8 @@ class DRAMCtrl : public QoS::MemCtrl
      * Page access frequency
      */
     std::unordered_map<Addr, std::tuple<uint32_t, Addr> > pageFreq;
-    std::unordered_set<Addr> isInDRAM;
+    std::unordered_map<Addr, bool> isInDRAM;
+    std::deque<Addr> migrateQueue;
 
     /*LEU structures*/
     std::unordered_map<Addr, std::vector<
@@ -1058,7 +1059,7 @@ class DRAMCtrl : public QoS::MemCtrl
     const uint32_t rowBufferSize;
     const uint32_t columnsPerRowBuffer;
     const uint32_t columnsPerStripe;
-    onst uint32_t ranksPerChannel;
+    const uint32_t ranksPerChannel;
     const uint32_t bankGroupsPerRank;
     const bool bankGroupArch;
     const uint32_t banksPerRank;

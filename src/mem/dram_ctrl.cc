@@ -199,7 +199,7 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
 #if defined(DRAM_NVM_LEU)
     // Boundary between nvm and dram
     for (uint64_t i = 0; i < MAX_RANKED; i++)
-        isInDRAM.insert(i);
+        isInDRAM[i] = true;
 #endif
     PMD_write = (struct Page_metadata*)
         malloc(numPages * sizeof(struct Page_metadata));
@@ -318,12 +318,14 @@ DRAMCtrl::in_nvm(Addr addr) {
 
     //Add logic to look you Intermmediate page table to check whether
     //address is mapped to NVM region (true) or DRAM region (false)
-    return isInDRAM.find(addr << 12) == isInDRAM.end();
+    if (isInDRAM.find(addr << 12) != isInDRAM.end() && isInDRAM[addr << 12])
+        return false;
+    return true;
 }
 
 bool
 DRAMCtrl::migrate(struct Rank_PFN *rank) {
-    std::unordered_set<Addr> tmp = isInDRAM;
+    std::unordered_map<Addr, bool> tmp = isInDRAM;
     unsigned count = 0;
     // std::cout << "======= Before ======= " << std::endl;
     // for (unordered_set<Addr> :: iterator it = isInDRAM.begin();
@@ -334,16 +336,18 @@ DRAMCtrl::migrate(struct Rank_PFN *rank) {
     isInDRAM.clear();
     for (unsigned i = 0; i < MAX_RANKED; i++) {
         if (tmp.find(rank[i].PFN) != tmp.end())
-            // Taget page is already in DRAM
-            continue;
+            // Taget page is already in old DRAM
+            isInDRAM[rank[i].PFN] = tmp[rank[i].PFN];
         else if (tmp.find(rank[i].PFN) == tmp.end()) {
+	    isInDRAM[rank[i].PFN] = false;
             count++;
+            migrateQueue.push_back(rank[i].PFN);		
             // std::cout << rank[i].PFN << std::endl;
         }
-        isInDRAM.insert(rank[i].PFN);
+        
     }
 
-    for (unordered_set<Addr> :: iterator it = tmp.begin();
+    for (unordered_map<Addr, bool> :: iterator it = tmp.begin();
          it != tmp.end() && isInDRAM.size() < MAX_RANKED; it++)
         isInDRAM.insert(*it);
 
@@ -610,6 +614,18 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     leu_logical_time_read++;
     //leu_update(PFN, pc, false, bool hit, 1.0, leu_logical_time_read);
     assert(pktCount != 0);
+    uint64_t migratePages = (curTick() - finishTime) / 300;
+    while (migratePages) {
+        if (!migrateQueue.size())
+            break;
+        auto pfn = migrateQueue[0];
+        std::cout << "Migrate page " << pfn << std::endl;
+        migrateQueue.pop_front();
+        if (isInDRAM.find(pfn) != isInDRAM.end()) {
+            isInDRAM[pfn] = true;
+            migratePages--;
+        }
+    }
 
     // if the request size is larger than burst size, the pkt is split into
     // multiple DRAM packets
@@ -744,6 +760,9 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
         DPRINTF(DRAM, "Request scheduled immediately\n");
         schedule(nextReqEvent, curTick());
     }
+
+      // std::cout << "sz: After addToReadQueue: " << totalReadQueueSize << std::endl;
+
 }
 
 void
@@ -3810,7 +3829,7 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
     else
        index_write_PFN = 0;
 
-    Addr max_ERD_PFN;
+    Addr max_ERD_PFN=0;
     uint64_t max_ERD =0 ;
     leu_victim_flag = true;
     bool pc_look = true;

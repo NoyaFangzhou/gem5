@@ -410,9 +410,9 @@ class DDR3_1600_8x8(DRAMCtrl):
 # an 8x8 configuration.
 # channel capacity 4GB
 # 8 devices / rank * 2 rank / channel * 256MB / device = 4GB
-class NVM_1600_8x8_4GB(DRAMCtrl):
+class NVM_1600_8x8_256MB(DRAMCtrl):
     # size of device in bytes
-    device_size = '256MB' #4GB for 1 channel
+    device_size = '16MB' #4GB for 1 channel
 
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8
@@ -493,7 +493,7 @@ class NVM_1600_8x8_4GB(DRAMCtrl):
 # channel capacity 256MB
 # 8 devices / rank * 2 rank / channel * 16MB / device = 256MB
 
-class DDR_NVM_256MB_8x2x128(DRAMCtrl):
+class DDR_NVM_256MB_8x2x16(DRAMCtrl):
     # size of device in bytes
     device_size = '16MB'
 
@@ -581,9 +581,9 @@ class DDR_NVM_256MB_8x2x128(DRAMCtrl):
 
 
 
-class DDR_1600_8x8_1GB(DRAMCtrl):
+class DDR_1600_8x8_256MB(DRAMCtrl):
     # size of device in bytes
-    device_size = '128MB' #1GB
+    device_size = '32MB' 
 
     # 8x8 configuration, 8 devices each with an 8-bit interface
     device_bus_width = 8

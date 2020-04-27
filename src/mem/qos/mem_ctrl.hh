@@ -111,6 +111,9 @@ class MemCtrl: public AbstractMemory
     /** Total read request packets queue length in #packets */
     uint64_t totalReadQueueSize;
 
+   /** Time when the read request is finished */
+    uint64_t finishTime;
+
     /** Total write request packets queue length in #packets */
     uint64_t totalWriteQueueSize;
 
