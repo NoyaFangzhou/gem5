@@ -21,6 +21,7 @@
 ############ DIRECTORY VARIABLES: MODIFY ACCORDINGLY #############
 GEM5_DIR=/localdisk/schakr11/CSC573/gem5/gem5                         # Install location of gem5
 SPEC_DIR=/localdisk/schakr11/CSC573/cpu2017                 # Install location of your SPEC2006 benchmarks
+STREAM_DIR=/localdisk/CSC573_project/stream
 ##################################################################
  
 ARGC=$# # Get number of arguments excluding arg0 (the script itself). Check for help message condition.
@@ -91,6 +92,7 @@ WRF_CODE_S=621.wrf_s
 EXCHANGE2_CODE_S=648.exchange2_s
 BWAVES_CODE_S=603.bwaves_s
 
+STREAM_C=stream_c
 #PERLBENCH_CODE=400.perlbench
 #BZIP2_CODE=401.bzip2
 #GCC_CODE=403.gcc
@@ -259,6 +261,9 @@ fi
 if [[ "$BENCHMARK" == "bwaves_s"  ]]; then
   BENCHMARK_CODE=$BWAVES_CODE_S
 fi
+if [[ "$BENCHMARK" == "stream_c"  ]]; then
+  BENCHMARK_CODE=$STREAM_C
+fi
  
 # Sanity check
 if [[ "$BENCHMARK_CODE" == "none" ]]; then
@@ -272,9 +277,12 @@ if [[ !(-d "$OUTPUT_DIR") ]]; then
     echo "Output directory $OUTPUT_DIR does not exist! Exiting."
     exit 1
 fi
- 
+
 RUN_DIR=$SPEC_DIR/benchspec/CPU/$BENCHMARK_CODE/run/run_base_refrate_removeVector-m64.0000    # Run directory for the selected SPEC benchmark
 SCRIPT_OUT=$OUTPUT_DIR/runscript.log                                                                    # File log for this script's stdout henceforth
+if [["$BENCHMARK" == "stream_c" ]]; then
+    RUN_DIR=$STREAM_DIR
+fi
  
 ################## REPORT SCRIPT CONFIGURATION ###################
  
@@ -304,4 +312,4 @@ echo "" | tee -a $SCRIPT_OUT
 # Actually launch gem5!
 #$GEM5_DIR/build/X86/gem5.opt --outdir=$OUTPUT_DIR $GEM5_DIR/configs/example/spec2017_config.py --benchmark=$BENCHMARK --benchmark_stdout=$OUTPUT_DIR/$BENCHMARK.out --benchmark_stderr=$OUTPUT_DIR/$BENCHMARK.err | tee -a $SCRIPT_OUT
 
-$GEM5_DIR/build/X86/gem5.opt --outdir=$OUTPUT_DIR $GEM5_DIR/configs/example/spec2017_config.py  --cpu-clock='1 GHz' --l1d_size=32kB --l1i_size=32kB --caches --l2_size=256kB --l2cache --cpu-type=TimingSimpleCPU --mem-type=DDR_NVM_4GB_8x2x128 --mem-size=4GB --mem-channels=1 -I 10000000 --benchmark=$BENCHMARK --benchmark_stdout=$OUTPUT_DIR/$BENCHMARK.out --benchmark_stderr=$OUTPUT_DIR/$BENCHMARK.err | tee -a $SCRIPT_OUT
+$GEM5_DIR/build/X86/gem5.opt --outdir=$OUTPUT_DIR $GEM5_DIR/configs/example/spec2017_config.py  --cpu-clock='1 GHz' --l1d_size=32kB --l1i_size=32kB --caches --l2_size=256kB --l2cache --cpu-type=TimingSimpleCPU --mem-type=DDR_NVM_256MB_8x2x16 --mem-channels=1 -I 10000000 --benchmark=$BENCHMARK --benchmark_stdout=$OUTPUT_DIR/$BENCHMARK.out --benchmark_stderr=$OUTPUT_DIR/$BENCHMARK.err | tee -a $SCRIPT_OUT

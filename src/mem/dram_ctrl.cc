@@ -232,6 +232,7 @@ DRAMCtrl::init()
     index_write_PFN=0;
 
     //init stat
+    total_page_remap = 0;
     total_dram_write = 0;
     total_dram_read = 0;
     total_nvm_write = 0;
@@ -357,7 +358,7 @@ DRAMCtrl::migrate(struct Rank_PFN *rank) {
     //      it != isInDRAM.end(); it++)
     //     std::cout << *it << " ";
     // std::cout << std::endl;
-
+    total_page_remap += 1;
     std::cout << count << " pages are remapped." << std::endl;
     return true;
 }
@@ -518,16 +519,16 @@ DRAMCtrl::printPageFreq(void)
        << "  Freq:"<< std::dec << get<0>(pair.second) << " Last PC:"
        << std::hex << get<1>(pair.second) << std::endl;
     }
+    std::cout << "Memory remap: " << std::dec << total_page_remap << std::endl;
+    std::cout << "Memory usage: " << std::dec << pageFreq.size() << " pages" << std::endl;
     std::cout << "========== DRAM Access Count =========" << std::endl;
-    std::cout << "Total DRAM Access: " << total_dram_read << std::endl;
-    std::cout << "Total DRAM Access: " << total_dram_write << std::endl;
-    std::cout << "Total DRAM Access: " << total_dram_read + total_dram_write << std::endl;
+    std::cout << "Total DRAM Read: " << std::dec << total_dram_read << std::endl;
+    std::cout << "Total DRAM Write: " << std::dec << total_dram_write << std::endl;
+    std::cout << "Total DRAM Access: " << std::dec << total_dram_read + total_dram_write << std::endl;
     std::cout << "========== NVM Access Count =========" << std::endl;
-    std::cout << "Total NVM Read: " << total_nvm_read << std::endl;
-    std::cout << "Total NVM Write: " << total_nvm_write << std::endl;
-    std::cout << "Total NVM Access: " << total_nvm_read + total_nvm_write << std::endl;
-    std::cout << "Memory usage: " << std::dec << pageFreq.size()
-              << " pages" << std::endl;
+    std::cout << "Total NVM Read: " << std::dec << total_nvm_read << std::endl;
+    std::cout << "Total NVM Write: " << std::dec << total_nvm_write << std::endl;
+    std::cout << "Total NVM Access: " << std::dec << total_nvm_read + total_nvm_write << std::endl;
 }
 
 void 

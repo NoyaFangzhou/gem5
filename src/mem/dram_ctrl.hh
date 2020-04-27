@@ -1072,6 +1072,7 @@ class DRAMCtrl : public QoS::MemCtrl
     uint32_t writesThisTime;
     uint32_t readsThisTime;
 
+    uint64_t total_page_remap;
     uint64_t total_dram_write;
     uint64_t total_dram_read;
     uint64_t total_nvm_write;
