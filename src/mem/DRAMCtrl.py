@@ -531,9 +531,9 @@ class DDR_NVM_4GB_8x2x128(DRAMCtrl):
     # NVM-1600 11-58-80
 
     tRCD = '13.75ns'
-    tRCD_nvm = '72.ns'
+    tRCD_nvm = '72.5ns'
     tCL = '13.75ns'
-    tCL_nvm = '72.ns'
+    tCL_nvm = '13.75ns'
     tRP = '13.75ns'
     tRP_nvm = '13.75ns'
     tRAS = '35ns'
@@ -543,7 +543,7 @@ class DDR_NVM_4GB_8x2x128(DRAMCtrl):
     activation_limit = 4
     tRFC = '260ns'
 
-    tWR = '30ns'
+    tWR = '15ns'
     tWR_nvm = '225ns'
 
     # Greater of 4 CK or 7.5 ns
