@@ -57,6 +57,7 @@
 #include <deque>
 #include <iomanip>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -71,6 +72,19 @@
 #include "mem/qport.hh"
 #include "params/DRAMCtrl.hh"
 #include "sim/eventq.hh"
+
+#define DRAM_NVM_LEU
+//#define DRAM_NVM
+#define MAX_PAGE_METADATA (numPages)
+#define MAX_RANKED (numPages >> 2)
+#define USE_STRUCT true
+#define RIT_SIZE 256
+#define LATT_SIZE 64
+#define HIST_SIZE 7
+#define BUCKET_SIZE 10
+#define USE_METADATA true
+#define  SWAP_TRIGGER_THRESHOLD_READ 2000
+#define  SWAP_TRIGGER_THRESHOLD_WRITE 1000
 
 /**
  * The DRAM controller is a single-channel memory controller capturing
@@ -768,8 +782,7 @@ class DRAMCtrl : public QoS::MemCtrl
      * then pktCount is greater than one.
      */
     void addToReadQueue(PacketPtr pkt, unsigned int pktCount);
-
-    void updatePageFreq(Addr addr);
+    void updatePageFreq(Addr addr, Addr pc);
     void printPageFreq(void);
 
     /**
@@ -887,7 +900,7 @@ class DRAMCtrl : public QoS::MemCtrl
      * @param row Index of the row
      */
     void activateBank(Rank& rank_ref, Bank& bank_ref, Tick act_tick,
-                      uint32_t row);
+                      uint32_t row, bool in_dram);
 
     /**
      * Precharge a given bank and also update when the precharge is
@@ -922,10 +935,94 @@ class DRAMCtrl : public QoS::MemCtrl
     std::vector<DRAMPacketQueue> readQueue;
     std::vector<DRAMPacketQueue> writeQueue;
 
+
     /**
      * Page access frequency
      */
-    std::unordered_map<Addr, uint32_t> pageFreq;
+    std::unordered_map<Addr, std::tuple<uint32_t, Addr> > pageFreq;
+    std::unordered_set<Addr> isInDRAM;
+
+    /*LEU structures*/
+    std::unordered_map<Addr, std::vector<
+      std::tuple<uint64_t, uint64_t>>> RIT_write; // Each entry is PC->
+                                  //(R11, Freq1), (RI2, Freq2) and so on
+
+    std::unordered_map<Addr,
+     std::tuple<Addr, uint64_t>> LATT_write; //Each entry is Page Frame Number
+                               //- < PC, Last access time stamp>
+
+    std::unordered_map<uint32_t, Addr> LATT_write_idx;
+
+    std::unordered_map<uint32_t, Addr> RIT_write_idx;
+
+    std::unordered_map<Addr, std::vector
+    <std::tuple<uint64_t, uint64_t>>> RIT_read; // Each entry is PC->
+                     // (R11, Freq1), (RI2, Freq2) and so on
+
+    std::unordered_map<Addr, std::tuple<Addr, uint64_t>> LATT_read;
+    //Each entry is Page Frame Number - < PC, Last access time stamp>
+
+    std::unordered_map<uint32_t, Addr> LATT_read_idx;
+
+    std::unordered_map<uint32_t, Addr> RIT_read_idx;
+
+
+    uint64_t numPages;
+    struct Page_metadata {
+        Addr pc;
+        Addr PFN;
+        uint64_t la;
+        bool set;
+        int lru;
+    };
+    struct Page_metadata *PMD_write;
+    struct Page_metadata *PMD_read;
+    //uint64_t index_PMD_write;
+    //uint64_t index_PMD_read;
+
+    struct Rank_PFN {
+        Addr PFN;
+        uint64_t ERD;
+    };
+
+    struct Rank_PFN *ranked_read_PFNs;
+    uint64_t index_read_PFN;
+    struct Rank_PFN *ranked_write_PFNs;
+    uint64_t index_write_PFN;
+
+    void insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double expected_distance);
+    void sort_PFN(struct Rank_PFN* ranked, uint64_t index);
+
+    uint64_t index_PMD_write;
+    uint64_t index_PMD_read;
+
+    void insert_PMD(struct Page_metadata* PMD, Addr PFN, Addr  pc, uint64_t la);
+    uint64_t search_PMD(struct Page_metadata* PMD, Addr PFN);
+    Addr get_PMD_pc(struct Page_metadata* PMD, uint64_t index);
+    uint64_t get_PMD_la(struct Page_metadata* PMD, uint64_t index);
+    uint32_t PMD_lru_victim(struct Page_metadata* PMD);
+    void PMD_lru_update(struct Page_metadata* PMD, uint64_t index);
+    void printLEUStructs(void);
+
+
+    uint64_t leu_logical_time_write;
+    uint64_t leu_logical_time_read;
+
+
+    bool leu_victim_flag;
+    uint32_t hash_func(uint64_t num);
+    uint8_t hash_func8(uint64_t num);
+
+    void leu_update(Addr PFN, Addr pc,
+    bool write, bool hit, double sampling_rate, uint64_t clock_time);
+    Addr leu_victim(struct Page_metadata* PMD, bool write);
+
+    bool in_nvm(Addr addr);
+    bool migrate(struct Rank_PFN *rank);
+
+
+    /////////////////////////
+
 
     /**
      * To avoid iterating over the write queue to check for
@@ -1007,6 +1104,15 @@ class DRAMCtrl : public QoS::MemCtrl
     const Tick wrToRdDly;
     const Tick rdToWrDly;
 
+#if defined(DRAM_NVM) || defined(DRAM_NVM_LEU)
+    const Tick tCL_nvm;
+    const Tick tRP_nvm;
+    const Tick tWR_nvm;
+    const Tick tRCD_nvm;
+    const Tick tRAS_nvm;
+    const Tick wrToRdDly_nvm;
+#endif
+
     /**
      * Memory controller configuration initialized based on parameter
      * values.
@@ -1035,6 +1141,8 @@ class DRAMCtrl : public QoS::MemCtrl
      */
     const Tick backendLatency;
 
+    const Tick writeLatency;
+    const Tick readLatency;
     /**
      * Till when must we wait before issuing next RD/WR burst?
      */
