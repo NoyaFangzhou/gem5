@@ -1060,7 +1060,7 @@ class DRAMCtrl : public QoS::MemCtrl
     const uint32_t rowBufferSize;
     const uint32_t columnsPerRowBuffer;
     const uint32_t columnsPerStripe;
-    const uint32_t ranksPerChannel;
+    onst uint32_t ranksPerChannel;
     const uint32_t bankGroupsPerRank;
     const bool bankGroupArch;
     const uint32_t banksPerRank;
@@ -1073,10 +1073,10 @@ class DRAMCtrl : public QoS::MemCtrl
     uint32_t writesThisTime;
     uint32_t readsThisTime;
 
-    uint64_t total_dram_write = 0;
-    uint64_t total_dram_read = 0;
-    uint64_t total_nvm_write = 0;
-    uint64_t total_nvm_read = 0;
+    uint64_t total_dram_write;
+    uint64_t total_dram_read;
+    uint64_t total_nvm_write;
+    uint64_t total_nvm_read;
     /**
      * Basic memory timing parameters initialized based on parameter
      * values.

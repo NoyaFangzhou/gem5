@@ -215,13 +215,19 @@ DRAMCtrl::init()
     index_PMD_read=0;
     index_read_PFN=0;
     index_write_PFN=0;
-    
-    uint64_t lru_index =0;
-    for(lru_index =0 ; lru_index < MAX_PAGE_METADATA ; lru_index++) {
-            PMD_write[lru_index].lru =lru_index;
-	    PMD_read[lru_index].lru =lru_index;
-	    PMD_write[lru_index].set = false;
-	    PMD_read[lru_index].set = false;
+
+    //init stat
+    total_dram_write = 0;
+    total_dram_read = 0;
+    total_nvm_write = 0;
+    total_nvm_read = 0;
+
+    uint64_t lru_index = 0;
+    for(lru_index = 0 ; lru_index < MAX_PAGE_METADATA ; lru_index++) {
+        PMD_write[lru_index].lru =lru_index;
+        PMD_read[lru_index].lru =lru_index;
+        PMD_write[lru_index].set = false;
+        PMD_read[lru_index].set = false;
     }
     std::cout<<"LEU STRUCTURES INIT COMPLETE!!"<<std::endl;
     //struct Page_metadata PMD_write[MAX_PAGE_METADATA];
@@ -474,47 +480,45 @@ DRAMCtrl::printLEUStructs(void)
    std::cout << "========= RIT =========" << std::endl;
    std::cout << "--------- RIT write---------" << std::endl;
    for (auto x : RIT_write) {
-	std::cout << "PC:" << x.first;
-        auto itr = x.second; 
-	for (int i = 0; i < itr.size(); i++) {
-	     std::cout << "   (RI:" << get<0>((x.second)[i]) <<
-	      ", FREQ:" << unsigned(get<1>((x.second)[i])) << "),";
-       	}
-	std::cout << std::endl;
+       std::cout << "PC:" << x.first;
+       auto itr = x.second; 
+       for (int i = 0; i < itr.size(); i++) {
+           std::cout << "   (RI:" << get<0>((x.second)[i]) << 
+               ", FREQ:" << unsigned(get<1>((x.second)[i])) << "),";
+       }
+       std::cout << std::endl;
     } //for close
 
     std::cout << "--------- RIT read---------" << std::endl;
-    for (auto x : RIT_read){
-	 std::cout << "PC:" << x.first;
-         auto itr = x.second;
-       	 for (int i = 0; i < itr.size(); i++)  {
-	     std::cout << "   (RI:" << get<0>((x.second)[i]) << 
-             ", FREQ:" << unsigned(get<1>((x.second)[i])) << "),";
+    for (auto x : RIT_read) {
+        std::cout << "PC:" << x.first;
+        auto itr = x.second;
+        for (int i = 0; i < itr.size(); i++)  {
+            std::cout << "   (RI:" << get<0>((x.second)[i]) << 
+                ", FREQ:" << unsigned(get<1>((x.second)[i])) << "),";
          }
-	 std::cout << std::endl;
+        std::cout << std::endl;
     } //for close
-
 
     std::cout << std::endl;
     std::cout << "========= LATT =========" << std::endl;
     std::cout << "----- LATT write ---------" << std::endl;
     for (auto x : LATT_write)
         std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" 
-	<< get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
+            << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
     std::cout << std::endl;;
-   
+
     std::cout << "----- LATT read ---------" << std::endl;
     for (auto x : LATT_read)
-        std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:" 
-	<< get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
+        std::cout << "PAGE FRAME NUMBER:" << x.first << "   PC:"  
+            << get<0>(x.second) << "  LAT:" << get<1>(x.second) << std::endl;
     std::cout << std::endl;; 
 
-    
     std::cout << "=============PMD read============" << std::endl;
     for (uint64_t i=0 ; i<MAX_PAGE_METADATA; i++) {
-	if(PMD_read[i].set)
-        	std::cout << std::hex << "PFN:"<<PMD_read[i].PFN  << " PC:"
-		<< std::hex <<PMD_read[i].pc <<" LAT:"<<std::hex<< PMD_read[i].la << std::endl;
+        if(PMD_read[i].set)
+            std::cout << std::hex << "PFN:"<<PMD_read[i].PFN  << " PC:" 
+                << std::hex <<PMD_read[i].pc <<" LAT:"<<std::hex<< PMD_read[i].la << std::endl;
 
     }
     std::cout<<std::endl;
@@ -522,8 +526,8 @@ DRAMCtrl::printLEUStructs(void)
     std::cout << "=============PMD write============" << std::endl;
     for (uint64_t i=0 ; i<MAX_PAGE_METADATA; i++) {
         if(PMD_write[i].set)
-        	std::cout << std::hex << "PFN:"<<PMD_write[i].PFN  << " PC:"
-		<< std::hex <<PMD_write[i].pc <<" LAT:"<<std::hex<< PMD_write[i].la << std::endl;
+            std::cout << std::hex << "PFN:"<<PMD_write[i].PFN  << " PC:"
+                << std::hex <<PMD_write[i].pc <<" LAT:"<<std::hex<< PMD_write[i].la << std::endl;
     }
     std::cout<<std::endl;
 
@@ -531,9 +535,7 @@ DRAMCtrl::printLEUStructs(void)
     std::cout << "----- ranked_read_PFN ---------" << std::endl;
     std::cout << "LEU victim flag:"<< leu_victim_flag << std::endl;
     for (uint64_t i=0 ; i<index_read_PFN; i++) {
-	std::cout << std::hex << "PFN:"<<ranked_read_PFNs[i].PFN  
-	<< " ERD:"<<ranked_read_PFNs[i].ERD << std::endl;
-         
+        std::cout << std::hex << "PFN:"<<ranked_read_PFNs[i].PFN << " ERD:"<<ranked_read_PFNs[i].ERD << std::endl;
     }
 
     std::cout << "----- ranked_write_PFN ---------" << std::endl;
@@ -543,8 +545,6 @@ DRAMCtrl::printLEUStructs(void)
         " ERD:"<<ranked_write_PFNs[i].ERD << std::endl;
 
     }
-   
-
 }
 
 void
@@ -3487,7 +3487,12 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         // LATT_read/write is direct-mapped. When there is a mapping conflict
         // LATT_read/write will remove the old one if the old PFN is not equal
         // similar to RIT
+<<<<<<< Updated upstream
         if (LATT_read_idx.count(PFN_idx) != 0) {
+=======
+        if (LATT_read_idx.count(PFN_idx) != 0)
+        {
+>>>>>>> Stashed changes
             auto old_PFN = LATT_read_idx[PFN_idx];
             if (old_PFN != PFN) {
                 LATT_read.erase(old_PFN);
@@ -3495,7 +3500,12 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         }
     }//if close
     else {
+<<<<<<< Updated upstream
         if (LATT_write_idx.count(PFN_idx) != 0) {
+=======
+        if (LATT_write_idx.count(PFN_idx) != 0)
+        {
+>>>>>>> Stashed changes
             auto old_PFN = LATT_write_idx[PFN_idx];
             if (old_PFN != PFN) {
                 LATT_write.erase(old_PFN);
@@ -3582,6 +3592,10 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
         }
 
     } //else close
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
     if (!write) {
         if (RIT_read.find(prev_pc) == RIT_read.end())
         { // entry not found
@@ -3603,7 +3617,11 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
             {
                 // ordered by RI
                 if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI) &&
+<<<<<<< Updated upstream
                                 (RI >= (get<0>((itr->second)[i]) - BUCKET_SIZE)))
+=======
+                                (RI <= (get<0>((itr->second)[i]) - BUCKET_SIZE)))
+>>>>>>> Stashed changes
                     //if current RI to insert is within BUCKET_SIZE of previous RI's
                 {             // found do
                     get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
@@ -3625,6 +3643,7 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
             if (itr->second.size() > HIST_SIZE)
             {
                 for (int i = 0; i < itr->second.size(); i++)
+<<<<<<< Updated upstream
                 {
                     get<1>((itr->second)[i]) -= 1;
                 }
@@ -3635,55 +3654,20 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
                         (itr->second).erase(i + itr->second.begin());
                     }
                 }
+=======
+                {
+                    get<1>((itr->second)[i]) -= 1;
+                }
+                for (int i = 0; i < itr->second.size(); i++)
+                {
+                    if (get<1>((itr->second)[i]) <= 0)
+                    {
+                        (itr->second).erase(i + itr->second.begin());
+                    }
+                }
+>>>>>>> Stashed changes
                 get<1>((itr->second)[0]) -= itr->second.size() - 1;
             }
-<<<<<<< Updated upstream
-            get<1>((itr->second)[0]) -= itr->second.size() - 1;
-        }
-
-    } // else close
-
-  } //if read close
-   else {
-
-      if (RIT_write.find(prev_pc) == RIT_write.end())
-    { // entry not found
-
-        vector<tuple<uint64_t, uint64_t>> new_entry;
-        new_entry.push_back(make_tuple(RI, 1));
-
-        RIT_write.insert({prev_pc, new_entry}); // not found new entry
-        RIT_write_idx[pc_idx] = prev_pc;
-    }
-    else{
-        // add to existing entry
-        auto itr = RIT_write.find(prev_pc);
-        int flag = 0; //get vector < tuple <RI, freq> >
-        for (int i = 0; i < ((itr->second)).size(); i++) {
-            if (((get<0>((itr->second)[i]) + BUCKET_SIZE) >= RI)
-                   && (RI <= (get<0>((itr->second)[i]) - BUCKET_SIZE))){
-            //if current RI to insert is within BUCKET_SIZE of previous RI's
-                get<1>((itr->second)[i]) = get<1>((itr->second)[i]) + 1;
-  		//increment frequency
-                flag = 1;
-                break;
-            } //if close
-        }     // for close
-
-        if (flag == 0){ // add this new RI and frequency
-            (itr->second).push_back(make_tuple(RI, 1));
-            //cout << "RI:"<<RI <<" FREQ:"<< 1 << endl;
-        }
-
-        //karp hash
-        if (itr->second.size() > HIST_SIZE) {
-            for (int i = 0; i < itr->second.size(); i++){
-                 get<1>((itr->second)[i]) -= 1;
-            }
-            for (int i = 0; i < itr->second.size(); i++){
-                if (get<1>((itr->second)[i]) <= 0){
-    	           (itr->second).erase(i + itr->second.begin());
-=======
         } // else close
     } //if read close
     else {
@@ -3717,26 +3701,39 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
                 (itr->second).push_back(make_tuple(RI, 1));
                 //cout << "RI:"<<RI <<" FREQ:"<< 1 << endl;
             }
+<<<<<<< Updated upstream
+=======
 
+>>>>>>> Stashed changes
             //karp hash
             // keep most frequent HIST_SIZE:  RI in histogram
             if (itr->second.size() > HIST_SIZE)
             {
                 for (int i = 0; i < itr->second.size(); i++)
+<<<<<<< Updated upstream
                 {
                     get<1>((itr->second)[i]) -= 1;
                 }
                 for (int i = 0; i < itr->second.size(); i++)
                 {
+=======
+                {
+                    get<1>((itr->second)[i]) -= 1;
+                }
+                for (int i = 0; i < itr->second.size(); i++)
+                {
+>>>>>>> Stashed changes
                     if (get<1>((itr->second)[i]) <= 0)
                     {
                         (itr->second).erase(i + itr->second.begin());
                     }
->>>>>>> Stashed changes
                 }
                 get<1>((itr->second)[0]) -= itr->second.size() - 1;
             }
+<<<<<<< Updated upstream
+=======
 
+>>>>>>> Stashed changes
         } // else close
     }//else write close
 }
@@ -3744,12 +3741,21 @@ void DRAMCtrl::leu_update(Addr PFN, Addr pc,
 
 void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN, double  expected_distance) {
 
+<<<<<<< Updated upstream
+    if ((*index< MAX_RANKED) {
+       ranked[(*index)].PFN = PFN;
+       ranked[(*index)].ERD = expected_distance;
+       (*index)++;
+    }
+    else {
+=======
    if((*index)< MAX_RANKED) {
        ranked[(*index)].PFN = PFN;
        ranked[(*index)].ERD = expected_distance;
        (*index)++;
    }
    else {
+>>>>>>> Stashed changes
     //find max ERD and evict it if less than max
       uint64_t i=0;
       uint64_t max_index = 0;
@@ -3762,12 +3768,15 @@ void DRAMCtrl::insert_ranked(struct Rank_PFN* ranked, uint64_t* index, Addr PFN,
               max_ERD = ranked[i].ERD;
           }
       }//for close
-
       if( max_ERD > expected_distance) {
            ranked[max_index].PFN = PFN;
            ranked[max_index].ERD = expected_distance;
       }
+<<<<<<< Updated upstream
+    }
+=======
    }
+>>>>>>> Stashed changes
 }
 
 
@@ -3793,66 +3802,74 @@ void DRAMCtrl::sort_PFN(struct Rank_PFN* ranked, uint64_t index) {
 //need to call based on read or write
 // PMD is the page metadata of the currect memory access
 Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
-    
     if(!write)
+<<<<<<< Updated upstream
         index_read_PFN = 0;
     else
         index_write_PFN = 0;
+=======
+       index_read_PFN = 0;
+    else
+       index_write_PFN = 0;
+>>>>>>> Stashed changes
 
     Addr max_ERD_PFN;
     uint64_t max_ERD =0 ;
-    leu_victim_flag = true;      
-    bool pc_look = true;	
+    leu_victim_flag = true;
+    bool pc_look = true;
     uint8_t leu_pc;
     uint32_t last_access;
     uint64_t i;
-    
     for(i=0; i < MAX_PAGE_METADATA; i++) {
         Addr PFN = PMD[i].PFN;
         bool set = PMD[i].set;
-        if(set) 
-        {
-            if(USE_METADATA) 
-            {
+        if(set) {
+            if(USE_METADATA) {
                 uint64_t index = search_PMD(PMD, PFN);
-                if(index!= -1) 
+                if(index!= -1)
                 {
                     leu_pc = get_PMD_pc(PMD, index);      //get ip for the particular cache block to look up PDT
                     last_access = get_PMD_la(PMD, index);
                     pc_look = true;
-                } else {
-                    leu_pc = 0;      //get ip for the particular cache block to look up PDT
-                    last_access = 0;  
-                    pc_look = false;
                 }
+                else {
+                    leu_pc = 0;      //get ip for the particular cache block to look up PDT
+                    last_access = 0;
+                    pc_look = false;
+                } 
             }// if USE_QUEUE close
-            else{
+            else
+            {
+
             }//else close     
             double expected_distance = 0;
             uint64_t tesla, cnt = 0;
+
             if(write) {
                 tesla = leu_logical_time_write - last_access;
-            } else {
+            }
+            else {
                 tesla = leu_logical_time_read -last_access;
             }
             if(write) {
-                if (RIT_write.find(leu_pc) != RIT_write.end() && pc_look){
-                    vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_write[leu_pc]; //get the RI,FREQ vector for this ip
-                    for (int i = 0; i < RI_FREQ.size(); i++){ //get size of thes vector
-                        if (get<0>(RI_FREQ[i]) > tesla) {   //get RI of the tuple
-                            auto RI = get<0>(RI_FREQ[i]);     //RI
-                            auto RI_cnt = get<1>(RI_FREQ[i]); //freq
-                            expected_distance += RI * RI_cnt; //calculate expected Reuse
-                            cnt += RI_cnt;
-                        } //if close
-                    } //for close
-                } //if close
+                 if (RIT_write.find(leu_pc) != RIT_write.end() && pc_look) {
+                     vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_write[leu_pc]; //get the RI,FREQ vector for this ip
+                     for (int i = 0; i < RI_FREQ.size(); i++) { //get size of thes vector
+                         if (get<0>(RI_FREQ[i]) > tesla) {                                    //get RI of the tuple
+                             auto RI = get<0>(RI_FREQ[i]);     //RI
+                             auto RI_cnt = get<1>(RI_FREQ[i]); //freq
+                             expected_distance += RI * RI_cnt; //calculate expected Reuse
+                             cnt += RI_cnt;
+                         } //if close
+                     } //for close
+                 } //if close
             }//if write close
             else {
-                if (RIT_read.find(leu_pc) != RIT_read.end() && pc_look){
+                if (RIT_read.find(leu_pc) != RIT_read.end() && pc_look) {
                     vector<tuple<uint64_t, uint64_t>> RI_FREQ = RIT_read[leu_pc]; //get the RI,FREQ vector for this ip
-                    for (int i = 0; i < RI_FREQ.size(); i++){ //get size of thes vector
-                        if (get<0>(RI_FREQ[i]) > tesla){    //get RI of the tuple
+                    for (int i = 0; i < RI_FREQ.size(); i++) { //get size of thes vector
+                        if (get<0>(RI_FREQ[i]) > tesla)
+                        {                                     //get RI of the tuple
                             auto RI = get<0>(RI_FREQ[i]);     //RI
                             auto RI_cnt = get<1>(RI_FREQ[i]); //freq
                             expected_distance += RI * RI_cnt; //calculate expected Reuse
@@ -3861,11 +3878,14 @@ Addr DRAMCtrl::leu_victim(struct Page_metadata* PMD, bool write) {
                     }//for close
                 } //if close
             }//else close
+            // compute the expected_distance for each entry of LEU table for
+            // specific PC
             if (cnt != 0) {
-                    expected_distance = (expected_distance / cnt) - tesla;
+                expected_distance = (expected_distance / cnt) - tesla;
             } else {
                 expected_distance = tesla;
             }
+            // log the PFN with max expected distance
             if( expected_distance >= max_ERD ) {
                 max_ERD_PFN = PFN;
                 max_ERD = expected_distance;
