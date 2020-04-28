@@ -940,6 +940,7 @@ class DRAMCtrl : public QoS::MemCtrl
      */
     std::unordered_map<Addr, std::tuple<uint32_t, Addr> > pageFreq;
     std::unordered_map<Addr, bool> isInDRAM;
+    uint64_t index_isInDRAM;
     std::deque<Addr> migrateQueue;
 
     /*LEU structures*/

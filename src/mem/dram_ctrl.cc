@@ -198,8 +198,11 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     std::cout << "Total number of pages: " << numPages << std::endl;
 #if defined(DRAM_NVM_LEU)
     // Boundary between nvm and dram
-    for (uint64_t i = 0; i < MAX_RANKED; i++)
-        isInDRAM[i] = true;
+    for (uint64_t i = 0; i < MAX_RANKED; i++) {
+        std::pair<Addr, bool> empty_entry (-1, true);
+     	 isInDRAM.insert(empty_entry);   
+	// isInDRAM[i] = true;
+    }  
 #endif
     PMD_write = (struct Page_metadata*)
         malloc(numPages * sizeof(struct Page_metadata));
@@ -230,12 +233,13 @@ DRAMCtrl::init()
     index_PMD_read=0;
     index_read_PFN=0;
     index_write_PFN=0;
-
+    index_isInDRAM =0;
     //init stat
     total_dram_write = 0;
     total_dram_read = 0;
     total_nvm_write = 0;
     total_nvm_read = 0;
+
     uint64_t lru_index =0;
     for (lru_index =0 ; lru_index < MAX_PAGE_METADATA ; lru_index++) {
         PMD_write[lru_index].lru =lru_index;
@@ -318,8 +322,18 @@ DRAMCtrl::in_nvm(Addr addr) {
 
     //Add logic to look you Intermmediate page table to check whether
     //address is mapped to NVM region (true) or DRAM region (false)
-    if (isInDRAM.find(addr << 12) != isInDRAM.end() && isInDRAM[addr << 12])
+  
+      	if (isInDRAM.find(addr << 12) != isInDRAM.end() && isInDRAM[addr << 12])
         return false;
+	else {
+
+		if (isInDRAM.find(-1) != isInDRAM.end() && index_isInDRAM < MAX_RANKED) {
+	              std::pair<Addr,bool> entry (addr << 12, true);
+                         isInDRAM.insert(entry);
+			 index_isInDRAM++;
+			return false;
+		}
+	}
     return true;
 }
 
