@@ -195,7 +195,7 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     }
 
     numPages = capacity / 1024 / 4;
-    std::cout << "Total number of pages: " << numPages << std::endl;
+    std::cout << "Total number of pages capacity in DRAM: " << numPages << std::endl;
 #if defined(DRAM_NVM_LEU)
     // Boundary between nvm and dram
     for (uint64_t i = 0; i < MAX_RANKED; i++) {
@@ -216,10 +216,10 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     // Register callback to dump page access count
     Callback* cb = new MakeCallback<DRAMCtrl,
                                     &DRAMCtrl::printPageFreq>(this);
-    Callback* cb2 = new MakeCallback<DRAMCtrl,
-                                    &DRAMCtrl::printLEUStructs>(this);
+    //Callback* cb2 = new MakeCallback<DRAMCtrl,
+    //                                &DRAMCtrl::printLEUStructs>(this);
     Stats::registerDumpCallback(cb);
-    Stats::registerDumpCallback(cb2);
+    //Stats::registerDumpCallback(cb2);
 }
 
 void
@@ -326,10 +326,13 @@ DRAMCtrl::in_nvm(Addr addr) {
       	if (isInDRAM.find(addr << 12) != isInDRAM.end() && isInDRAM[addr << 12])
         return false;
 	else {
-
+               
 		if (isInDRAM.find(-1) != isInDRAM.end() && index_isInDRAM < MAX_RANKED) {
 	              std::pair<Addr,bool> entry (addr << 12, true);
                          isInDRAM.insert(entry);
+                       std::pair<Addr,bool> empty_entry (-1, true);
+		        isInDRAM.insert(empty_entry);
+
 			 index_isInDRAM++;
 			return false;
 		}
@@ -339,6 +342,7 @@ DRAMCtrl::in_nvm(Addr addr) {
 
 bool
 DRAMCtrl::migrate(struct Rank_PFN *rank) {
+    
     std::unordered_map<Addr, bool> tmp = isInDRAM;
     unsigned count = 0;
     // std::cout << "======= Before ======= " << std::endl;
@@ -348,6 +352,7 @@ DRAMCtrl::migrate(struct Rank_PFN *rank) {
     // std::cout << std::endl;
 
     isInDRAM.clear();
+    tmp.erase(-1);
     for (unsigned i = 0; i < MAX_RANKED; i++) {
         if (tmp.find(rank[i].PFN) != tmp.end())
             // Taget page is already in old DRAM
@@ -525,21 +530,21 @@ DRAMCtrl::updatePageFreq(Addr addr, Addr pc)
 
 void
 DRAMCtrl::printPageFreq(void)
-{
+{ /*
     std::cout << "========= Page Access Count =========" << std::endl;
     for (auto const& pair: pageFreq) {
         std::cout << std::setw(8) << "PFN:"<< std::hex << pair.first
        << "  Freq:"<< std::dec << get<0>(pair.second) << " Last PC:"
        << std::hex << get<1>(pair.second) << std::endl;
-    }
+    }*/
     std::cout << "========== DRAM Access Count =========" << std::endl;
-    std::cout << "Total DRAM Access: " << total_dram_read << std::endl;
-    std::cout << "Total DRAM Access: " << total_dram_write << std::endl;
-    std::cout << "Total DRAM Access: " << total_dram_read + total_dram_write << std::endl;
+    std::cout << "Total DRAM Access: " << std::dec<< total_dram_read << std::endl;
+    std::cout << "Total DRAM Access: " << std::dec<<total_dram_write << std::endl;
+    std::cout << "Total DRAM Access: " << std::dec<<total_dram_read + total_dram_write << std::endl;
     std::cout << "========== NVM Access Count =========" << std::endl;
-    std::cout << "Total NVM Read: " << total_nvm_read << std::endl;
-    std::cout << "Total NVM Write: " << total_nvm_write << std::endl;
-    std::cout << "Total NVM Access: " << total_nvm_read + total_nvm_write << std::endl;
+    std::cout << "Total NVM Read: " << std::dec<<total_nvm_read << std::endl;
+    std::cout << "Total NVM Write: " << std::dec<<total_nvm_write << std::endl;
+    std::cout << "Total NVM Access: " << std::dec<<total_nvm_read + total_nvm_write << std::endl;
     std::cout << "Memory usage: " << std::dec << pageFreq.size()
               << " pages" << std::endl;
 }

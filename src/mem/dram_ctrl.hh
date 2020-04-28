@@ -73,7 +73,7 @@
 #include "params/DRAMCtrl.hh"
 #include "sim/eventq.hh"
 
-//#define DRAM_NVM_LEU/
+#define DRAM_NVM_LEU
 //#define DRAM_NVM
 #define MAX_PAGE_METADATA (numPages)
 #define MAX_RANKED (numPages >> 2)
@@ -83,8 +83,8 @@
 #define HIST_SIZE 7
 #define BUCKET_SIZE 10
 #define USE_METADATA true
-#define  SWAP_TRIGGER_THRESHOLD_READ 2000
-#define  SWAP_TRIGGER_THRESHOLD_WRITE 1000
+#define  SWAP_TRIGGER_THRESHOLD_READ 20
+#define  SWAP_TRIGGER_THRESHOLD_WRITE 10
 /**
  * The DRAM controller is a single-channel memory controller capturing
  * the most important timing constraints associated with a
