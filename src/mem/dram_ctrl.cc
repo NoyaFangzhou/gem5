@@ -352,12 +352,15 @@ DRAMCtrl::migrate(struct Rank_PFN *rank) {
     // std::cout << std::endl;
 
     isInDRAM.clear();
-    tmp.erase(-1);
+    if(index_isInDRAM >= MAX_RANKED)
+    	tmp.erase(-1);
+    
     for (unsigned i = 0; i < MAX_RANKED; i++) {
         if (tmp.find(rank[i].PFN) != tmp.end())
             // Taget page is already in old DRAM
             isInDRAM[rank[i].PFN] = tmp[rank[i].PFN];
         else if (tmp.find(rank[i].PFN) == tmp.end()) {
+		//Ranked page not in DRAM, add to 
 	    isInDRAM[rank[i].PFN] = false;
             count++;
             migrateQueue.push_back(rank[i].PFN);		
