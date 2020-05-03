@@ -196,14 +196,14 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
 
     numPages = capacity / 1024 / 4;
     std::cout << "Total number of pages capacity in DRAM: " << numPages << std::endl;
-#if defined(DRAM_NVM_LEU)
-    // Boundary between nvm and dram
-    for (uint64_t i = 0; i < MAX_RANKED; i++) {
-        std::pair<Addr, bool> empty_entry (-1, true);
-     	 isInDRAM.insert(empty_entry);   
-	// isInDRAM[i] = true;
-    }  
-#endif
+// #if defined(DRAM_NVM_LEU)
+//     // Boundary between nvm and dram
+//     for (uint64_t i = 0; i < MAX_RANKED; i++) {
+//         std::pair<Addr, bool> empty_entry (-1, true);
+//         isInDRAM.insert(empty_entry);
+// 	// isInDRAM[i] = true;
+//     }
+// #endif
     PMD_write = (struct Page_metadata*)
         malloc(numPages * sizeof(struct Page_metadata));
     PMD_read = (struct Page_metadata*)
@@ -216,10 +216,10 @@ DRAMCtrl::DRAMCtrl(const DRAMCtrlParams* p) :
     // Register callback to dump page access count
     Callback* cb = new MakeCallback<DRAMCtrl,
                                     &DRAMCtrl::printPageFreq>(this);
-    //Callback* cb2 = new MakeCallback<DRAMCtrl,
-    //                                &DRAMCtrl::printLEUStructs>(this);
+    Callback* cb2 = new MakeCallback<DRAMCtrl,
+                                   &DRAMCtrl::printLEUStructs>(this);
     Stats::registerDumpCallback(cb);
-    //Stats::registerDumpCallback(cb2);
+    Stats::registerDumpCallback(cb2);
 }
 
 void
@@ -233,7 +233,6 @@ DRAMCtrl::init()
     index_PMD_read=0;
     index_read_PFN=0;
     index_write_PFN=0;
-    index_isInDRAM =0;
     //init stat
     total_dram_write = 0;
     total_dram_read = 0;
@@ -323,20 +322,12 @@ DRAMCtrl::in_nvm(Addr addr) {
     //Add logic to look you Intermmediate page table to check whether
     //address is mapped to NVM region (true) or DRAM region (false)
   
-      	if (isInDRAM.find(addr << 12) != isInDRAM.end() && isInDRAM[addr << 12])
+    if (isInDRAM.find(addr >> 12) != isInDRAM.end() && isInDRAM[addr >> 12])
         return false;
-	else {
-               
-		if (isInDRAM.find(-1) != isInDRAM.end() && index_isInDRAM < MAX_RANKED) {
-	              std::pair<Addr,bool> entry (addr << 12, true);
-                         isInDRAM.insert(entry);
-                       std::pair<Addr,bool> empty_entry (-1, true);
-		        isInDRAM.insert(empty_entry);
-
-			 index_isInDRAM++;
-			return false;
-		}
-	}
+    else if (isInDRAM.size() < MAX_RANKED) {
+        isInDRAM[addr >> 12] = true;
+        return false;
+    }
     return true;
 }
 
@@ -352,18 +343,17 @@ DRAMCtrl::migrate(struct Rank_PFN *rank) {
     // std::cout << std::endl;
 
     isInDRAM.clear();
-    if(index_isInDRAM >= MAX_RANKED)
-    	tmp.erase(-1);
     
     for (unsigned i = 0; i < MAX_RANKED; i++) {
         if (tmp.find(rank[i].PFN) != tmp.end())
             // Taget page is already in old DRAM
             isInDRAM[rank[i].PFN] = tmp[rank[i].PFN];
-        else if (tmp.find(rank[i].PFN) == tmp.end()) {
-		//Ranked page not in DRAM, add to 
+        else if (tmp.find(rank[i].PFN) == tmp.end(),
+                 isInDRAM.find(rank[i].PFN) == isInDRAM.end()) {
+            //Ranked page not in DRAM, add to DRAM and migrateQueue
 	    isInDRAM[rank[i].PFN] = false;
             count++;
-            migrateQueue.push_back(rank[i].PFN);		
+            migrateQueue.push_back(rank[i].PFN);
             // std::cout << rank[i].PFN << std::endl;
         }
         
@@ -380,7 +370,8 @@ DRAMCtrl::migrate(struct Rank_PFN *rank) {
     //     std::cout << *it << " ";
     // std::cout << std::endl;
 
-    std::cout << count << " pages are remapped." << std::endl;
+    if (count)
+        std::cout << count << " pages are remapped." << std::endl;
     return true;
 }
 
@@ -409,7 +400,7 @@ DRAMCtrl::recvAtomic(PacketPtr pkt)
             latency = tRP_nvm + tRCD_nvm + tCL_nvm;
 #else
 #ifdef DRAM_NVM
-        if (pkt->getAddr() <  0x40000000) //1 GB
+        if (pkt->getAddr() <  0x4000000) //1 GB
             latency = tRP + tRCD + tCL;
         else
             latency = tRP_nvm + tRCD_nvm + tCL_nvm;
@@ -541,8 +532,8 @@ DRAMCtrl::printPageFreq(void)
        << std::hex << get<1>(pair.second) << std::endl;
     }*/
     std::cout << "========== DRAM Access Count =========" << std::endl;
-    std::cout << "Total DRAM Access: " << std::dec<< total_dram_read << std::endl;
-    std::cout << "Total DRAM Access: " << std::dec<<total_dram_write << std::endl;
+    std::cout << "Total DRAM Read: " << std::dec<< total_dram_read << std::endl;
+    std::cout << "Total DRAM Write: " << std::dec<<total_dram_write << std::endl;
     std::cout << "Total DRAM Access: " << std::dec<<total_dram_read + total_dram_write << std::endl;
     std::cout << "========== NVM Access Count =========" << std::endl;
     std::cout << "Total NVM Read: " << std::dec<<total_nvm_read << std::endl;
@@ -637,8 +628,8 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
     leu_logical_time_read++;
     //leu_update(PFN, pc, false, bool hit, 1.0, leu_logical_time_read);
     assert(pktCount != 0);
-    uint64_t migratePages = (curTick() - finishTime) / 300;
-    while (migratePages) {
+    uint64_t NumMigratePages = (curTick() - finishTime) / 300;
+    while (NumMigratePages) {
         if (!migrateQueue.size())
             break;
         auto pfn = migrateQueue[0];
@@ -646,7 +637,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
         migrateQueue.pop_front();
         if (isInDRAM.find(pfn) != isInDRAM.end()) {
             isInDRAM[pfn] = true;
-            migratePages--;
+            NumMigratePages--;
         }
     }
 #endif
@@ -697,7 +688,7 @@ DRAMCtrl::addToReadQueue(PacketPtr pkt, unsigned int pktCount)
           to index
           use Rank_PFN ranked_read_PFN
        */
-       std::cout << "addToReadQueue Max ERD PFN:"<<PFN_max_ERD << std::endl;
+       // std::cout << "addToReadQueue Max ERD PFN:"<<PFN_max_ERD << std::endl;
        migrate(ranked_read_PFNs);
     }
 #endif    

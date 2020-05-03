@@ -74,7 +74,7 @@
 #include "sim/eventq.hh"
 
 #define DRAM_NVM_LEU
-//#define DRAM_NVM
+// #define DRAM_NVM
 #define MAX_PAGE_METADATA (numPages)
 #define MAX_RANKED (numPages >> 2)
 #define USE_STRUCT true
@@ -940,7 +940,6 @@ class DRAMCtrl : public QoS::MemCtrl
      */
     std::unordered_map<Addr, std::tuple<uint32_t, Addr> > pageFreq;
     std::unordered_map<Addr, bool> isInDRAM;
-    uint64_t index_isInDRAM;
     std::deque<Addr> migrateQueue;
 
     /*LEU structures*/
